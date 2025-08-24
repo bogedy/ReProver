@@ -14,17 +14,17 @@ trainer:
   logger: null
 
 model:
-  model_name: google/byt5-small
+  model_name: kaiyuy/leandojo-lean4-retriever-byt5-small
   lr: 0
-  warmup_steps: 2000
-  num_retrieved: 100
+  warmup_steps: 0
+  num_retrieved: 1
 
 data:
   data_path: data/leandojo_benchmark_4/random/
   corpus_path: data/leandojo_benchmark_4/corpus.jsonl
   num_negatives: 3
   num_in_file_negatives: 1
-  batch_size: 8
+  batch_size: 16
   eval_batch_size: 64
   max_seq_len: 1024
   num_workers: 4

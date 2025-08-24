@@ -194,19 +194,23 @@ class PremiseRetriever(pl.LightningModule):
             device=self.device,
         )
 
-        for i in tqdm(range(0, len(self.corpus), batch_size)):
-            batch_premises = self.corpus.all_premises[i : i + batch_size]
-            tokenized_premises = self.tokenizer(
-                [p.serialize() for p in batch_premises],
-                padding="longest",
-                max_length=self.max_seq_len,
-                truncation=True,
-                return_tensors="pt",
-            ).to(self.device)
-            self.corpus_embeddings[i : i + batch_size] = self._encode(
-                tokenized_premises.input_ids, tokenized_premises.attention_mask
-            )
+        if self.lr != 0:
+            for i in tqdm(range(0, len(self.corpus), batch_size)):
+                batch_premises = self.corpus.all_premises[i : i + batch_size]
+                tokenized_premises = self.tokenizer(
+                    [p.serialize() for p in batch_premises],
+                    padding="longest",
+                    max_length=self.max_seq_len,
+                    truncation=True,
+                    return_tensors="pt",
+                ).to(self.device)
+                self.corpus_embeddings[i : i + batch_size] = self._encode(
+                    tokenized_premises.input_ids, tokenized_premises.attention_mask
+                )
 
+        else:
+            logger.info("Dummy training with 0 lr, skipping reindexing.")
+            
         self.embeddings_staled = False
 
     def on_validation_start(self) -> None:

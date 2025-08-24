@@ -1,3 +1,7 @@
+# fork
+
+my fork to add some quality of life improvements. i wanted to avoid reindexing the embeddings when dummy training the retrieval model with 0 lr.
+
 # Retrieval-Augmented Prover (ReProver)
 
 ![Model](images/ReProver.jpg)

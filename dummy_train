@@ -1,0 +1,1 @@
+python retrieval/main.py fit --config retrieval/confs/cli_dummy.yaml
