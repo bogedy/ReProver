@@ -11,7 +11,11 @@ trainer:
       cpu_checkpointing: false
   gradient_clip_val: 1.0
   max_steps: 1
-  logger: null
+  logger:
+    class_path: pytorch_lightning.loggers.WandbLogger
+    init_args:
+      name: null
+      save_dir: null
 
 model:
   model_name: kaiyuy/leandojo-lean4-retriever-byt5-small
@@ -22,9 +26,9 @@ model:
 data:
   data_path: data/leandojo_benchmark_4/random/
   corpus_path: data/leandojo_benchmark_4/corpus.jsonl
-  num_negatives: 3
-  num_in_file_negatives: 1
-  batch_size: 16
+  num_negatives: 1
+  num_in_file_negatives: 0
+  batch_size: 1
   eval_batch_size: 64
-  max_seq_len: 1024
+  max_seq_len: 256
   num_workers: 4
