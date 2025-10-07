@@ -53,7 +53,7 @@ class PremiseRetriever(pl.LightningModule):
     def load_hf(
         cls, ckpt_path: str, max_seq_len: int, device: int, dtype=None
     ) -> "PremiseRetriever":
-        model = PremiseRetriever(ckpt_path, 0.0, 0, max_seq_len, 100).to(device).eval()
+        model = PremiseRetriever(ckpt_path, 1e-9, 0, max_seq_len, 100).to(device).eval()
         if dtype is not None:
             return model.to(dtype)
         elif (

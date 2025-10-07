@@ -21,7 +21,7 @@ def main() -> None:
         type=str,
         required=True,
     )
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--batch-size", type=int, default=32)
     args = parser.parse_args()
     logger.info(args)
 
