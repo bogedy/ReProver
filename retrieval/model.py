@@ -277,9 +277,13 @@ class PremiseRetriever(pl.LightningModule):
 
     def on_predict_start(self) -> None:
         self.corpus = self.trainer.datamodule.corpus
-        self.corpus_embeddings = None
-        self.embeddings_staled = True
-        self.reindex_corpus(self.trainer.datamodule.eval_batch_size)
+        if hasattr(self.trainer.datamodule, "corpus_embeddings") and self.trainer.datamodule.corpus_embeddings is not None:
+            self.corpus_embeddings = self.trainer.datamodule.corpus_embeddings
+            self.embeddings_staled = False
+        else:
+            self.corpus_embeddings = None
+            self.embeddings_staled = True
+            self.reindex_corpus(self.trainer.datamodule.eval_batch_size)
         self.predict_step_outputs = []
 
     def predict_step(self, batch: Dict[str, Any], _):

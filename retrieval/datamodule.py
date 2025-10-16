@@ -3,6 +3,7 @@
 import os
 import json
 import torch
+import pickle
 import random
 import itertools
 from tqdm import tqdm
@@ -16,7 +17,7 @@ from transformers import AutoTokenizer
 from torch.utils.data import Dataset, DataLoader
 
 
-from common import Context, Corpus, Batch, Example, get_all_pos_premises
+from common import Context, Corpus, Batch, Example, get_all_pos_premises, IndexedCorpus
 
 
 class RetrievalDataset(Dataset):
@@ -210,6 +211,8 @@ class RetrievalDataModule(pl.LightningDataModule):
         eval_batch_size: int,
         max_seq_len: int,
         num_workers: int,
+        prebuilt_data_path: Optional[str] = None,
+        prebuilt_corpus_path: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.data_path = data_path
@@ -222,13 +225,63 @@ class RetrievalDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.corpus = Corpus(corpus_path)
+
+        if prebuilt_corpus_path is not None:
+            logger.info(f"Loading prebuilt corpus from {prebuilt_corpus_path}")
+            with open(prebuilt_corpus_path, "rb") as f:
+                c = pickle.load(f)
+                if type(c) == Corpus:
+                    self.corpus = c
+                elif type(c) == IndexedCorpus:
+                    self.corpus = c.corpus
+                    self.corpus_embeddings = c.embeddings
+                else:
+                    raise TypeError("Prebuilt corpus expects an IndexedCorpus or Corpus object.")
+
+        else:
+            self.corpus = Corpus(corpus_path)
+            self.corpus_embeddings = None
+            self.embeddings_staled = True
 
         metadata = json.load(open(os.path.join(data_path, "../metadata.json")))
         repo = LeanGitRepo(**metadata["from_repo"])
 
     def prepare_data(self) -> None:
         pass
+
+    def _load_or_build_dataset(
+        self, 
+        split: str, 
+        is_train: bool, 
+        data_paths: List[str]
+    ) -> RetrievalDataset:
+        """Load prebuilt dataset if available, otherwise build from scratch."""
+        if self.prebuilt_data_path:
+            pkl_path = os.path.join(self.prebuilt_data_path, f"{split}_dataset.pkl")
+            logger.info(f"Loading prebuilt {split} dataset from {pkl_path}")
+            with open(pkl_path, "rb") as f:
+                data = pickle.load(f)
+            
+            # Create dataset instance without calling __init__
+            ds = RetrievalDataset.__new__(RetrievalDataset)
+            ds.corpus = self.corpus
+            ds.num_negatives = self.num_negatives
+            ds.num_in_file_negatives = self.num_in_file_negatives
+            ds.max_seq_len = self.max_seq_len
+            ds.tokenizer = self.tokenizer
+            ds.is_train = is_train
+            ds.data = data
+            return ds
+        else:
+            return RetrievalDataset(
+                data_paths,
+                self.corpus,
+                self.num_negatives,
+                self.num_in_file_negatives,
+                self.max_seq_len,
+                self.tokenizer,
+                is_train,
+            )
 
     def setup(self, stage: Optional[str] = None) -> None:
         self.ds_train = RetrievalDataset(

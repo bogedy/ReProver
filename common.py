@@ -282,6 +282,12 @@ class Corpus:
         i.e., all premises defined in the (transitively) imported files or earlier in the same file.
         """
         premises = PremiseSet()
+        
+        if hasattr(self, "accessible_premises_cache"):
+            indices = self.get_accessible_premise_indexes(path, pos)
+            premises.update([self.all_premises[i] for i in indices])
+            return premises
+
         for p in self.get_premises(path):
             if p.end <= pos:
                 premises.add(p)
