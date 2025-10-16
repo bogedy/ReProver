@@ -289,6 +289,10 @@ class PremiseRetriever(pl.LightningModule):
     def predict_step(self, batch: Dict[str, Any], _):
         context_emb = self._encode(batch["context_ids"], batch["context_mask"])
         assert not self.embeddings_staled
+        if self.corpus_embeddings.device != context_emb.device:
+            self.corpus_embeddings = self.corpus_embeddings.to(context_emb.device)
+        if self.corpus_embeddings.dtype != context_emb.dtype:
+            self.corpus_embeddings = self.corpus_embeddings.to(context_emb.dtype)
         retrieved_premises, scores = self.corpus.get_nearest_premises(
             self.corpus_embeddings,
             batch["context"],
