@@ -354,8 +354,8 @@ def get_all_pos_premises(annot_tac, corpus: Corpus) -> List[Premise]:
         p = corpus.locate_premise(def_path, Pos(*prov["def_pos"]))
         if p is not None:
             all_pos_premises.add(p)
-        else:
-            logger.warning(f"Cannot locate premise: {prov}")
+#        else:
+#            logger.warning(f"Cannot locate premise: {prov}")
 
     return list(all_pos_premises)
 

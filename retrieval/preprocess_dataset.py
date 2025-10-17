@@ -8,7 +8,7 @@ from tqdm import tqdm
 from loguru import logger
 from transformers import AutoTokenizer
 
-from common import Corpus
+from common import Corpus, IndexedCorpus
 from retrieval.datamodule import RetrievalDataset
 
 
@@ -72,7 +72,7 @@ def main():
         logger.info(f"Loading indexed corpus from {args.indexed_corpus_path}")
         with open(args.indexed_corpus_path, "rb") as f:
             indexed_corpus = pickle.load(f)
-        indexed_corpus.corpus = corpus
+        indexed_corpus = IndexedCorpus(corpus=corpus, embeddings=indexed_corpus.embeddings)
         with open(args.indexed_corpus_path, "wb") as f:
             pickle.dump(indexed_corpus, f)
     
