@@ -223,7 +223,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         self.eval_batch_size = eval_batch_size
         self.max_seq_len = max_seq_len
         self.num_workers = num_workers
-
+        self.prebuilt_data_path = prebuilt_data_path
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
         if prebuilt_corpus_path is not None:
@@ -284,40 +284,55 @@ class RetrievalDataModule(pl.LightningDataModule):
             )
 
     def setup(self, stage: Optional[str] = None) -> None:
-        self.ds_train = RetrievalDataset(
-            [os.path.join(self.data_path, "train.json")],
-            self.corpus,
-            self.num_negatives,
-            self.num_in_file_negatives,
-            self.max_seq_len,
-            self.tokenizer,
+        self.ds_train = self._load_or_build_dataset(
+            "train",
             is_train=True,
+            data_paths=[os.path.join(self.data_path, "train.json")]
         )
 
         if stage in (None, "fit", "validate"):
-            self.ds_val = RetrievalDataset(
-                [os.path.join(self.data_path, "val.json")],
-                self.corpus,
-                self.num_negatives,
-                self.num_in_file_negatives,
-                self.max_seq_len,
-                self.tokenizer,
+            self.ds_val = self._load_or_build_dataset(
+                "val",
                 is_train=False,
+                data_paths=[os.path.join(self.data_path, "val.json")]
             )
 
         if stage in (None, "fit", "predict"):
-            self.ds_pred = RetrievalDataset(
-                [
-                    os.path.join(self.data_path, f"{split}.json")
-                    for split in ("train", "val", "test")
-                ],
-                self.corpus,
-                self.num_negatives,
-                self.num_in_file_negatives,
-                self.max_seq_len,
-                self.tokenizer,
-                is_train=False,
-            )
+            # For ds_pred, we need to combine train, val, and test
+            if self.prebuilt_data_path:
+                # Load the three separate prebuilt datasets and combine them
+                ds_pred = RetrievalDataset.__new__(RetrievalDataset)
+                ds_pred.corpus = self.corpus
+                ds_pred.num_negatives = self.num_negatives
+                ds_pred.num_in_file_negatives = self.num_in_file_negatives
+                ds_pred.max_seq_len = self.max_seq_len
+                ds_pred.tokenizer = self.tokenizer
+                ds_pred.is_train = False
+                
+                # Load and combine all three splits
+                combined_data = []
+                for split in ["train", "val", "test"]:
+                    pkl_path = os.path.join(self.prebuilt_data_path, f"{split}_dataset.pkl")
+                    logger.info(f"Loading prebuilt {split} dataset for prediction from {pkl_path}")
+                    with open(pkl_path, "rb") as f:
+                        combined_data.extend(pickle.load(f))
+                
+                ds_pred.data = combined_data
+                self.ds_pred = ds_pred
+            else:
+                # Build from scratch
+                self.ds_pred = RetrievalDataset(
+                    [
+                        os.path.join(self.data_path, f"{split}.json")
+                        for split in ("train", "val", "test")
+                    ],
+                    self.corpus,
+                    self.num_negatives,
+                    self.num_in_file_negatives,
+                    self.max_seq_len,
+                    self.tokenizer,
+                    is_train=False,
+                )
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
