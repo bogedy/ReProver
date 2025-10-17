@@ -4,12 +4,55 @@ import os
 import json
 import pickle
 import argparse
+
 from tqdm import tqdm
 from loguru import logger
 from transformers import AutoTokenizer
 
 from common import Corpus, IndexedCorpus
 from retrieval.datamodule import RetrievalDataset
+
+
+def build_fast_accessible_cache(corpus, unique_contexts):
+    """Build cache efficiently by precomputing per-path premise indexes."""
+    logger.info("Precomputing per-path premise indexes...")
+    
+    # Build a mapping: path -> list of (premise_index, end_pos)
+    path_to_premises = {}
+    for i, p in enumerate(tqdm(corpus.all_premises, desc="Indexing premises by path")):
+        if p.path not in path_to_premises:
+            path_to_premises[p.path] = []
+        path_to_premises[p.path].append((i, p.end))
+    
+    # Build a mapping: path -> set of premise indexes from imported files
+    logger.info("Computing imported premise indexes per path...")
+    path_to_imported_indexes = {}
+    for path in tqdm(corpus.transitive_dep_graph.nodes, desc="Computing imports"):
+        imported_indexes = []
+        for dep_path in corpus.transitive_dep_graph.successors(path):
+            if dep_path in path_to_premises:
+                imported_indexes.extend([idx for idx, _ in path_to_premises[dep_path]])
+        path_to_imported_indexes[path] = set(imported_indexes)
+    
+    # Now build the cache for each unique context
+    logger.info(f"Building cache for {len(unique_contexts)} contexts...")
+    accessible_premise_indexes_cache = {}
+    
+    for path, pos in tqdm(unique_contexts, desc="Building accessible premise cache"):
+        # Get premises from same file that end before pos
+        same_file_indexes = [
+            idx for idx, end_pos in path_to_premises.get(path, [])
+            if end_pos <= pos
+        ]
+        
+        # Get all imported premises
+        imported_indexes = path_to_imported_indexes.get(path, set())
+        
+        # Combine both
+        accessible_indexes = same_file_indexes + list(imported_indexes)
+        accessible_premise_indexes_cache[(path, pos)] = accessible_indexes
+    
+    return accessible_premise_indexes_cache
 
 
 def main():
@@ -58,9 +101,11 @@ def main():
         
         logger.info(f"✓ Saved {split} dataset")
 
-    accessible_premise_indexes_cache = {}
-    for path, pos in tqdm(unique_contexts, desc="Building accessible premise indexes cache"):
-        accessible_premise_indexes_cache[(path, pos)] = corpus.get_accessible_premise_indexes(path, pos)
+    # Build the cache efficiently
+    accessible_premise_indexes_cache = build_fast_accessible_cache(corpus, unique_contexts)
+    
+    corpus.accessible_premise_indexes_cache = accessible_premise_indexes_cache
+    logger.info(f"Built cache with {len(accessible_premise_indexes_cache)} entries")
 
     # Save the corpus once
     corpus_path = os.path.join(args.output_dir, "corpus.pkl")

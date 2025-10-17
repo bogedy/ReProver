@@ -283,8 +283,8 @@ class Corpus:
         """
         premises = PremiseSet()
         
-        if hasattr(self, "accessible_premises_cache"):
-            indices = self.get_accessible_premise_indexes(path, pos)
+        if hasattr(self, "accessible_premise_cache"):
+            indices = self.accessible_premise_cache[(path, pos)]
             premises.update([self.all_premises[i] for i in indices])
             return premises
 
