@@ -319,7 +319,7 @@ class Corpus:
         premises.update(self._get_imported_premises(path))
         return premises
 
-    def get_accessible_premise_indexes(self, path: str, pos: Pos) -> List[int]:
+    def get_accessible_premise_indexes_graph(self, path: str, pos: Pos) -> List[int]:
         """Return a list of indices of accessible premises at position ``pos`` in file ``path``.
         
         This is now O(n) where n is the number of premises in the current file plus 
@@ -344,7 +344,7 @@ class Corpus:
         Uses the optimized get_accessible_premise_indexes method.
         """
         mask = torch.zeros(len(self.all_premises), dtype=torch.bool, device=device)
-        accessible_indices = self.get_accessible_premise_indexes(path, pos)
+        accessible_indices = self.get_accessible_premise_indexes_graph(path, pos)
         mask[accessible_indices] = True
         return mask
 
