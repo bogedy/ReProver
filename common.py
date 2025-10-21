@@ -282,11 +282,6 @@ class Corpus:
         i.e., all premises defined in the (transitively) imported files or earlier in the same file.
         """
         premises = PremiseSet()
-        
-        if hasattr(self, "accessible_premise_cache"):
-            indices = self.accessible_premise_cache[(path, pos)]
-            premises.update([self.all_premises[i] for i in indices])
-            return premises
 
         for p in self.get_premises(path):
             if p.end <= pos:
@@ -310,27 +305,67 @@ class Corpus:
         k: int,
     ) -> Tuple[List[List[Premise]], List[List[float]]]:
         """Perform a batch of nearest neighbour search."""
-        similarities = batch_context_emb @ premise_embeddings.t()
-        idxs_batch = similarities.argsort(dim=1, descending=True).tolist()
-        results = [[] for _ in batch_context]
-        scores = [[] for _ in batch_context]
+        batch_size = len(batch_context)
+        num_premises = len(self.all_premises)
 
-        for j, (ctx, idxs) in enumerate(zip(batch_context, idxs_batch)):
-            accessible_premises = self.get_accessible_premises(
+        similarities = batch_context_emb @ premise_embeddings.t()  # [batch_size, num_premises]
+
+        # Check if we can use fast GPU-based filtering
+        has_fast_cache = hasattr(self, 'accessible_premise_indexes_cache')
+
+        if has_fast_cache:
+            # Fast path: Use GPU vectorized filtering with cache
+            mask = torch.zeros(batch_size, num_premises, dtype=torch.bool, device=similarities.device)
+
+            for j, ctx in enumerate(batch_context):
+                key = (ctx.path, ctx.theorem_pos)
+                if key in self.accessible_premise_indexes_cache:
+                    # Cache hit - use precomputed indices
+                    accessible_indices = self.accessible_premise_indexes_cache[key]
+                else:
+                    # Cache miss - compute on the fly
+                    accessible_indices = self.get_accessible_premise_indexes(ctx.path, ctx.theorem_pos)
+
+                # Convert to tensor indices if it's a set/list
+                if isinstance(accessible_indices, (set, list)):
+                    accessible_indices = list(accessible_indices)
+
+                mask[j, accessible_indices] = True
+
+            # Vectorized masking for entire batch
+            masked_sims = similarities.clone()
+            masked_sims[~mask] = float('-inf')
+
+            # Get top-k for entire batch at once
+            top_k_values, top_k_indices = torch.topk(masked_sims, k=k, dim=1)
+
+            # Convert to CPU only once for entire batch
+            top_k_indices = top_k_indices.cpu().tolist()
+            top_k_values = top_k_values.cpu().tolist()
+
+            results = [[self.all_premises[i] for i in indices] for indices in top_k_indices]
+            scores = top_k_values
+        else:
+            # Fallback path: Use original logic with PremiseSet (slower but works without cache)
+            idxs_batch = similarities.argsort(dim=1, descending=True).tolist()
+            results = [[] for _ in batch_context]
+            scores = [[] for _ in batch_context]
+
+            for j, (ctx, idxs) in enumerate(zip(batch_context, idxs_batch)):
+                accessible_premises = self.get_accessible_premises(
                 ctx.path, ctx.theorem_pos
-            )
-            for i in idxs:
-                p = self.all_premises[i]
-                if p in accessible_premises:
-                    results[j].append(p)
-                    scores[j].append(similarities[j, i].item())
-                    if len(results[j]) >= k:
-                        break
-            else:
-                raise ValueError
+                )
+                for i in idxs:
+                    p = self.all_premises[i]
+                    if p in accessible_premises:
+                        results[j].append(p)
+                        scores[j].append(similarities[j, i].item())
+                        if len(results[j]) >= k:
+                            break
+                else:
+                    raise ValueError
 
         return results, scores
-
 
 @dataclass(frozen=True)
 class IndexedCorpus:

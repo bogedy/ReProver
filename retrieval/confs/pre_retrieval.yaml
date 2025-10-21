@@ -1,0 +1,144 @@
+# pytorch_lightning==2.5.3
+seed_everything: 3407
+trainer:
+  accelerator: gpu
+  strategy:
+    class_path: pytorch_lightning.strategies.DeepSpeedStrategy
+    init_args:
+      accelerator: null
+      zero_optimization: true
+      stage: 2
+      remote_device: null
+      offload_optimizer: false
+      offload_parameters: false
+      offload_params_device: cpu
+      nvme_path: /local_nvme
+      params_buffer_count: 5
+      params_buffer_size: 100000000
+      max_in_cpu: 1000000000
+      offload_optimizer_device: cpu
+      optimizer_buffer_count: 4
+      block_size: 1048576
+      queue_depth: 8
+      single_submit: false
+      overlap_events: true
+      thread_count: 1
+      pin_memory: false
+      sub_group_size: 1000000000000
+      contiguous_gradients: true
+      overlap_comm: true
+      allgather_partitions: true
+      reduce_scatter: true
+      allgather_bucket_size: 200000000
+      reduce_bucket_size: 200000000
+      zero_allow_untested_optimizer: true
+      logging_batch_size_per_gpu: auto
+      config: null
+      logging_level: 30
+      parallel_devices: null
+      cluster_environment: null
+      loss_scale: 0.0
+      initial_scale_power: 16
+      loss_scale_window: 1000
+      hysteresis: 2
+      min_loss_scale: 1
+      partition_activations: false
+      cpu_checkpointing: false
+      contiguous_memory_optimization: false
+      synchronize_checkpoint_boundary: false
+      load_full_weights: false
+      precision_plugin: null
+      process_group_backend: null
+      timeout: 0:30:00
+  devices: 1
+  num_nodes: 1
+  precision: bf16-mixed
+  logger:
+    class_path: pytorch_lightning.loggers.WandbLogger
+    init_args:
+      name: fast1
+      save_dir: logs/fast1
+      version: null
+      offline: false
+      dir: null
+      id: null
+      anonymous: null
+      project: null
+      log_model: false
+      experiment: null
+      prefix: ''
+      checkpoint_name: null
+      entity: null
+      notes: null
+      tags: null
+      config: null
+      config_exclude_keys: null
+      config_include_keys: null
+      allow_val_change: null
+      group: null
+      job_type: null
+      mode: null
+      force: null
+      reinit: null
+      resume: null
+      resume_from: null
+      fork_from: null
+      save_code: null
+      tensorboard: null
+      sync_tensorboard: null
+      monitor_gym: null
+      settings: null
+  callbacks: null
+  fast_dev_run: false
+  max_epochs: null
+  min_epochs: null
+  max_steps: 1
+  min_steps: null
+  max_time: null
+  limit_train_batches: null
+  limit_val_batches: null
+  limit_test_batches: null
+  limit_predict_batches: null
+  overfit_batches: 0.0
+  val_check_interval: null
+  check_val_every_n_epoch: 1
+  num_sanity_val_steps: null
+  log_every_n_steps: null
+  enable_checkpointing: null
+  enable_progress_bar: null
+  enable_model_summary: null
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  gradient_clip_algorithm: null
+  deterministic: null
+  benchmark: null
+  inference_mode: true
+  use_distributed_sampler: true
+  profiler: null
+  detect_anomaly: false
+  barebones: false
+  plugins: null
+  sync_batchnorm: false
+  reload_dataloaders_every_n_epochs: 0
+  default_root_dir: null
+  model_registry: null
+model:
+  model_name: kaiyuy/leandojo-lean4-retriever-byt5-small
+  lr: 0.0
+  warmup_steps: 0
+  num_retrieved: 1
+data:
+  data_path: data/leandojo_benchmark_4/random/
+  corpus_path: data/leandojo_benchmark_4/corpus.jsonl
+  num_negatives: 1
+  num_in_file_negatives: 0
+  batch_size: 1
+  eval_batch_size: 64
+  max_seq_len: 256
+  num_workers: 4
+  prebuilt_data_path: data/leandojo_benchmark_4/random/prebuilt
+  prebuilt_corpus_path: logs/indexed_corpus.pkl
+optimizer: null
+lr_scheduler: null
+return_predictions: null
+ckpt_path: logs/train_retriever_random/lightning_logs/kft7uyny/checkpoints/epoch=0-step=1.ckpt/
