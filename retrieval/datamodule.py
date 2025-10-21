@@ -96,16 +96,16 @@ class RetrievalDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Example:
         if self.for_prediction:
-        # For prediction, precompute the accessible premise mask
-        ex = self.data[idx]
-        mask = self.corpus.get_accessible_premise_mask(
-            ex["context"].path, 
-            ex["context"].theorem_pos,
-            device=torch.device('cpu')  # Keep on CPU for now
-        )
-        ex = dict(ex)  # Make a copy if needed
-        ex["accessible_mask"] = mask
-        return ex
+            # For prediction, precompute the accessible premise mask
+            ex = self.data[idx]
+            mask = self.corpus.get_accessible_premise_mask(
+                ex["context"].path, 
+                ex["context"].theorem_pos,
+                device=torch.device('cpu')  # Keep on CPU for now
+            )
+            ex = dict(ex)  # Make a copy if needed
+            ex["accessible_mask"] = mask
+            return ex
     
         if not self.is_train:
             return self.data[idx]
