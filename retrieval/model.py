@@ -283,6 +283,7 @@ class PremiseRetriever(pl.LightningModule):
             logger.info(f"Loading pre-indexed corpus from {indexed_corpus_path}")
             indexed_corpus = pickle.load(open(indexed_corpus_path, "rb"))
             # self.corpus = indexed_corpus.corpus
+            self.corpus = self.trainer.datamodule.corpus
             self.corpus_embeddings = indexed_corpus.embeddings.to(self.device)
             
             # Convert dtype if needed
