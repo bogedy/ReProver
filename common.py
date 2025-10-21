@@ -80,6 +80,10 @@ class Premise:
     """Raw, human-written code for defining the premise.
     """
 
+    index: Optional[int] = field(default=None, repr=False, compare=False, hash=False)
+    """Index of this premise in the corpus's all_premises list. Set during corpus construction.
+    """
+
     def __post_init__(self) -> None:
         assert isinstance(self.path, str)
         assert isinstance(self.full_name, str)
@@ -215,6 +219,19 @@ class Corpus:
         assert nx.is_directed_acyclic_graph(dep_graph)
         self.transitive_dep_graph = nx.transitive_closure_dag(dep_graph)
 
+        # Assign indices to all premises and store in graph nodes
+        logger.info("Assigning premise indices and building file index mappings")
+        for idx, premise in enumerate(self.all_premises):
+            # Use object.__setattr__ to bypass frozen dataclass
+            object.__setattr__(premise, 'index', idx)
+        
+        # Build premise index mappings for each file node
+        for path in self.transitive_dep_graph.nodes:
+            file = self._get_file(path)
+            premise_indices = [p.index for p in file.premises]
+            self.transitive_dep_graph.nodes[path]['premise_indices'] = premise_indices
+
+        self.imported_indices_cache = {}
         self.imported_premises_cache = {}
         self.fill_cache()
 
@@ -262,8 +279,10 @@ class Corpus:
         return None
 
     def fill_cache(self) -> None:
+        """Pre-compute imported premises and their indices for all files."""
         for path in self.transitive_dep_graph.nodes:
             self._get_imported_premises(path)
+            self._get_imported_premise_indices(path)
 
     def _get_imported_premises(self, path: str) -> List[Premise]:
         """Return a list of premises imported in file ``path``. The result is cached."""
@@ -277,6 +296,18 @@ class Corpus:
         self.imported_premises_cache[path] = premises
         return premises
 
+    def _get_imported_premise_indices(self, path: str) -> List[int]:
+        """Return a list of premise indices imported in file ``path``. The result is cached."""
+        indices = self.imported_indices_cache.get(path, None)
+        if indices is not None:
+            return indices
+
+        indices = []
+        for p in self.transitive_dep_graph.successors(path):
+            indices.extend(self.transitive_dep_graph.nodes[p]['premise_indices'])
+        self.imported_indices_cache[path] = indices
+        return indices
+
     def get_accessible_premises(self, path: str, pos: Pos) -> PremiseSet:
         """Return the set of premises accessible at position ``pos`` in file ``path``,
         i.e., all premises defined in the (transitively) imported files or earlier in the same file.
@@ -289,12 +320,87 @@ class Corpus:
         return premises
 
     def get_accessible_premise_indexes(self, path: str, pos: Pos) -> List[int]:
+        """Return a list of indices of accessible premises at position ``pos`` in file ``path``.
+        
+        This is now O(n) where n is the number of premises in the current file plus 
+        imported premises, rather than O(all_premises).
+        """
+        indices = []
+        
+        # Add premises from current file that are defined before pos
+        for p in self.get_premises(path):
+            if p.end <= pos:
+                indices.append(p.index)
+        
+        # Add all imported premises (already cached)
+        indices.extend(self._get_imported_premise_indices(path))
+        
+        return indices
+
+    def get_accessible_premise_mask(self, path: str, pos: Pos, device: torch.device = torch.device('cpu')) -> torch.BoolTensor:
+        """Return a boolean mask for accessible premises at position ``pos`` in file ``path``.
+        
+        The mask has the same length as self.all_premises, with True for accessible premises.
+        Uses the optimized get_accessible_premise_indexes method.
+        """
+        mask = torch.zeros(len(self.all_premises), dtype=torch.bool, device=device)
+        accessible_indices = self.get_accessible_premise_indexes(path, pos)
+        mask[accessible_indices] = True
+        return mask
+
+    def get_accessible_premise_indexes(self, path: str, pos: Pos) -> List[int]:
         return [
             i
             for i, p in enumerate(self.all_premises)
             if (p.path == path and p.end <= pos)
             or self.transitive_dep_graph.has_edge(path, p.path)
         ]
+
+    def get_nearest_premises_masked(
+        self,
+        premise_embeddings: torch.FloatTensor,
+        batch_context: List[Context],
+        batch_context_emb: torch.Tensor,
+        batch_masks: torch.BoolTensor,
+        k: int,
+    ) -> Tuple[List[List[Premise]], List[List[float]]]:
+        """Perform a batch of nearest neighbour search using precomputed masks.
+        
+        Args:
+            premise_embeddings: [num_premises, embedding_dim]
+            batch_context: List of Context objects
+            batch_context_emb: [batch_size, embedding_dim]
+            batch_masks: [batch_size, num_premises] boolean tensor
+            k: number of nearest premises to retrieve
+        
+        Returns:
+            Tuple of (retrieved premises, scores) for each context in batch
+        """
+        batch_size = len(batch_context)
+        
+        # Compute similarities for entire batch
+        similarities = batch_context_emb @ premise_embeddings.t()  # [batch_size, num_premises]
+        
+        # Move masks to same device as similarities if needed
+        if batch_masks.device != similarities.device:
+            batch_masks = batch_masks.to(similarities.device)
+        
+        # Vectorized masking for entire batch
+        masked_sims = similarities.clone()
+        masked_sims[~batch_masks] = float('-inf')
+        
+        # Get top-k for entire batch at once
+        top_k_values, top_k_indices = torch.topk(masked_sims, k=k, dim=1)
+        
+        # Convert to CPU only once for entire batch
+        top_k_indices_cpu = top_k_indices.cpu().tolist()
+        top_k_values_cpu = top_k_values.cpu().tolist()
+        
+        # Build results
+        results = [[self.all_premises[i] for i in indices] for indices in top_k_indices_cpu]
+        scores = top_k_values_cpu
+        
+        return results, scores
 
     def get_nearest_premises(
         self,

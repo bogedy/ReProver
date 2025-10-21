@@ -282,15 +282,28 @@ class PremiseRetriever(pl.LightningModule):
         self.reindex_corpus(self.trainer.datamodule.eval_batch_size)
         self.predict_step_outputs = []
 
+    # Update predict_step method (around line 285)
     def predict_step(self, batch: Dict[str, Any], _):
         context_emb = self._encode(batch["context_ids"], batch["context_mask"])
         assert not self.embeddings_staled
-        retrieved_premises, scores = self.corpus.get_nearest_premises(
-            self.corpus_embeddings,
-            batch["context"],
-            context_emb,
-            self.num_retrieved,
-        )
+        
+        # Use masked retrieval if masks are available
+        if "accessible_masks" in batch:
+            retrieved_premises, scores = self.corpus.get_nearest_premises_masked(
+                self.corpus_embeddings,
+                batch["context"],
+                context_emb,
+                batch["accessible_masks"],
+                self.num_retrieved,
+            )
+        else:
+            # Fall back to original method
+            retrieved_premises, scores = self.corpus.get_nearest_premises(
+                self.corpus_embeddings,
+                batch["context"],
+                context_emb,
+                self.num_retrieved,
+            )
 
         for (
             url,

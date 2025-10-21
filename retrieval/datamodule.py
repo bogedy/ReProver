@@ -29,6 +29,7 @@ class RetrievalDataset(Dataset):
         max_seq_len: int,
         tokenizer,
         is_train: bool,
+        for_prediction: bool = False,
     ) -> None:
         super().__init__()
         self.corpus = corpus
@@ -37,6 +38,7 @@ class RetrievalDataset(Dataset):
         self.max_seq_len = max_seq_len
         self.tokenizer = tokenizer
         self.is_train = is_train
+        self.for_prediction = for_prediction
         self.data = list(
             itertools.chain.from_iterable(self._load_data(path) for path in data_paths)
         )
@@ -93,6 +95,18 @@ class RetrievalDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx: int) -> Example:
+        if self.for_prediction:
+        # For prediction, precompute the accessible premise mask
+        ex = self.data[idx]
+        mask = self.corpus.get_accessible_premise_mask(
+            ex["context"].path, 
+            ex["context"].theorem_pos,
+            device=torch.device('cpu')  # Keep on CPU for now
+        )
+        ex = dict(ex)  # Make a copy if needed
+        ex["accessible_mask"] = mask
+        return ex
+    
         if not self.is_train:
             return self.data[idx]
 
@@ -142,6 +156,10 @@ class RetrievalDataset(Dataset):
         batch["context"] = context
         batch["context_ids"] = tokenized_context.input_ids
         batch["context_mask"] = tokenized_context.attention_mask
+
+        # Add accessible masks if available (for prediction)
+        if "accessible_mask" in examples[0]:
+            batch["accessible_masks"] = torch.stack([ex["accessible_mask"] for ex in examples])   
 
         # Tokenize the label and premises.
         if self.is_train:
@@ -210,6 +228,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         eval_batch_size: int,
         max_seq_len: int,
         num_workers: int,
+        prefetch_factor: Optional[int] = None,
     ) -> None:
         super().__init__()
         self.data_path = data_path
@@ -220,6 +239,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         self.eval_batch_size = eval_batch_size
         self.max_seq_len = max_seq_len
         self.num_workers = num_workers
+        self.prefetch_factor = prefetch_factor
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.corpus = Corpus(corpus_path)
@@ -239,6 +259,7 @@ class RetrievalDataModule(pl.LightningDataModule):
             self.max_seq_len,
             self.tokenizer,
             is_train=True,
+            for_prediction=False,
         )
 
         if stage in (None, "fit", "validate"):
@@ -250,6 +271,7 @@ class RetrievalDataModule(pl.LightningDataModule):
                 self.max_seq_len,
                 self.tokenizer,
                 is_train=False,
+                for_prediction=False,
             )
 
         if stage in (None, "fit", "predict"):
@@ -264,6 +286,7 @@ class RetrievalDataModule(pl.LightningDataModule):
                 self.max_seq_len,
                 self.tokenizer,
                 is_train=False,
+                for_prediction=True,
             )
 
     def train_dataloader(self) -> DataLoader:
@@ -289,12 +312,17 @@ class RetrievalDataModule(pl.LightningDataModule):
         )
 
     def predict_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.ds_pred,
-            batch_size=self.eval_batch_size,
-            num_workers=self.num_workers,
-            collate_fn=self.ds_pred.collate,
-            shuffle=False,
-            pin_memory=True,
-            drop_last=False,
-        )
+        dataloader_kwargs = {
+            "batch_size": self.eval_batch_size,
+            "num_workers": self.num_workers,
+            "collate_fn": self.ds_pred.collate,
+            "shuffle": False,
+            "pin_memory": True,
+            "drop_last": False,
+        }
+        
+        # Add prefetch_factor if specified and num_workers > 0
+        if self.prefetch_factor is not None and self.num_workers > 0:
+            dataloader_kwargs["prefetch_factor"] = self.prefetch_factor
+        
+        return DataLoader(self.ds_pred, **dataloader_kwargs)

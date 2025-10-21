@@ -32,3 +32,4 @@ data:
   eval_batch_size: 64
   max_seq_len: 256
   num_workers: 4
+  prefetch_factor: 2
