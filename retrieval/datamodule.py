@@ -229,6 +229,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         max_seq_len: int,
         num_workers: int,
         prefetch_factor: Optional[int] = None,
+        indexed_corpus_path: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.data_path = data_path
@@ -240,9 +241,11 @@ class RetrievalDataModule(pl.LightningDataModule):
         self.max_seq_len = max_seq_len
         self.num_workers = num_workers
         self.prefetch_factor = prefetch_factor
+        self.indexed_corpus_path = indexed_corpus_path
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.corpus = Corpus(corpus_path)
+        self.indexed_corpus = None
 
         metadata = json.load(open(os.path.join(data_path, "../metadata.json")))
         repo = LeanGitRepo(**metadata["from_repo"])

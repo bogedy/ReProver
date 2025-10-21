@@ -33,3 +33,4 @@ data:
   max_seq_len: 256
   num_workers: 4
   prefetch_factor: 2
+  indexed_corpus_path: logs/indexed_corpus.pkl.bak

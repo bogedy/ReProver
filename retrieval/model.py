@@ -276,11 +276,31 @@ class PremiseRetriever(pl.LightningModule):
     ##############
 
     def on_predict_start(self) -> None:
+    # Check if datamodule has an indexed corpus path
+    indexed_corpus_path = getattr(self.trainer.datamodule, 'indexed_corpus_path', None)
+    
+    if indexed_corpus_path is not None:
+        logger.info(f"Loading pre-indexed corpus from {indexed_corpus_path}")
+        indexed_corpus = pickle.load(open(indexed_corpus_path, "rb"))
+        # self.corpus = indexed_corpus.corpus
+        self.corpus_embeddings = indexed_corpus.embeddings.to(self.device)
+        
+        # Convert dtype if needed
+        if self.corpus_embeddings.dtype != self.dtype:
+            logger.info(f"Converting embeddings from {self.corpus_embeddings.dtype} to {self.dtype}")
+            self.corpus_embeddings = self.corpus_embeddings.to(self.dtype)
+        
+        self.embeddings_staled = False
+        logger.info("Pre-indexed corpus loaded, skipping reindexing")
+    else:
+        # Fall back to original behavior - recompute embeddings
+        logger.info("No pre-indexed corpus provided, computing embeddings")
         self.corpus = self.trainer.datamodule.corpus
         self.corpus_embeddings = None
         self.embeddings_staled = True
         self.reindex_corpus(self.trainer.datamodule.eval_batch_size)
-        self.predict_step_outputs = []
+    
+    self.predict_step_outputs = []
 
     # Update predict_step method (around line 285)
     def predict_step(self, batch: Dict[str, Any], _):
