@@ -230,6 +230,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         num_workers: int,
         prefetch_factor: Optional[int] = None,
         indexed_corpus_path: Optional[str] = None,
+        predict_splits: Optional[List[str]] = None,
     ) -> None:
         super().__init__()
         self.data_path = data_path
@@ -242,6 +243,8 @@ class RetrievalDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.prefetch_factor = prefetch_factor
         self.indexed_corpus_path = indexed_corpus_path
+
+        self.predict_splits = predict_splits if predict_splits is not None else ["train", "val", "test"]
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.corpus = Corpus(corpus_path)
@@ -281,7 +284,7 @@ class RetrievalDataModule(pl.LightningDataModule):
             self.ds_pred = RetrievalDataset(
                 [
                     os.path.join(self.data_path, f"{split}.json")
-                    for split in ("train", "val", "test")
+                    for split in self.predict_splits
                 ],
                 self.corpus,
                 self.num_negatives,

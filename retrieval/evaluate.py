@@ -6,7 +6,7 @@ import pickle
 import argparse
 import numpy as np
 from tqdm import tqdm
-from typing import Tuple
+from typing import Tuple, Optional, List
 from loguru import logger
 
 
@@ -17,9 +17,11 @@ def _eval(data, preds_map) -> Tuple[float, float, float]:
 
     for thm in tqdm(data):
         for i, _ in enumerate(thm["traced_tactics"]):
-            pred = preds_map[
-                (thm["file_path"], thm["full_name"], tuple(thm["start"]), i)
-            ]
+            key = (thm["file_path"], thm["full_name"], tuple(thm["start"]), i)
+            if key not in preds_map:
+                continue  # Skip if prediction not available
+            
+            pred = preds_map[key]
             all_pos_premises = set(pred["all_pos_premises"])
             if len(all_pos_premises) == 0:
                 continue
@@ -37,6 +39,9 @@ def _eval(data, preds_map) -> Tuple[float, float, float]:
             else:
                 MRR.append(0.0)
 
+    if len(R1) == 0:
+        return 0.0, 0.0, 0.0
+    
     R1 = 100 * np.mean(R1)
     R10 = 100 * np.mean(R10)
     MRR = np.mean(MRR)
@@ -59,6 +64,13 @@ def main() -> None:
         required=True,
         help="Path to the directory containing the train/val/test splits.",
     )
+    parser.add_argument(
+        "--splits",
+        type=str,
+        nargs="+",
+        default=["train", "val", "test"],
+        help="Which splits to evaluate on (default: all three)",
+    )
     args = parser.parse_args()
     logger.info(args)
 
@@ -70,12 +82,19 @@ def main() -> None:
     }
     assert len(preds) == len(preds_map), "Duplicate predictions found!"
 
-    for split in ("train", "val", "test"):
+    for split in args.splits:
         data_path = os.path.join(args.data_path, f"{split}.json")
+        if not os.path.exists(data_path):
+            logger.warning(f"Split file not found: {data_path}, skipping")
+            continue
+        
         data = json.load(open(data_path))
         logger.info(f"Evaluating on {data_path}")
         R1, R10, MRR = _eval(data, preds_map)
-        logger.info(f"R@1 = {R1} %, R@10 = {R10} %, MRR = {MRR}")
+        if R1 == 0.0 and R10 == 0.0 and MRR == 0.0:
+            logger.warning(f"No matching predictions found for {split}")
+        else:
+            logger.info(f"R@1 = {R1:.2f}%, R@10 = {R10:.2f}%, MRR = {MRR:.4f}")
 
 
 if __name__ == "__main__":
