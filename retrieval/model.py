@@ -286,11 +286,6 @@ class PremiseRetriever(pl.LightningModule):
             self.corpus = self.trainer.datamodule.corpus
             self.corpus_embeddings = indexed_corpus.embeddings.to(self.device)
             
-            # Convert dtype if needed
-            if self.corpus_embeddings.dtype != self.dtype:
-                logger.info(f"Converting embeddings from {self.corpus_embeddings.dtype} to {self.dtype}")
-                self.corpus_embeddings = self.corpus_embeddings.to(self.dtype)
-            
             self.embeddings_staled = False
             logger.info("Pre-indexed corpus loaded, skipping reindexing")
         else:
@@ -307,6 +302,9 @@ class PremiseRetriever(pl.LightningModule):
     def predict_step(self, batch: Dict[str, Any], _):
         context_emb = self._encode(batch["context_ids"], batch["context_mask"])
         assert not self.embeddings_staled
+
+        if self.corpus_embeddings.dtype != context_emb.dtype:
+            self.corpus_embeddings = self.corpus_embeddings.to(context_emb.dtype)
         
         # Use masked retrieval if masks are available
         if "accessible_masks" in batch:
