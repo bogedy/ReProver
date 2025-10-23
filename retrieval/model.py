@@ -194,7 +194,10 @@ class PremiseRetriever(pl.LightningModule):
             device=self.device,
         )
 
-        if self.lr != 0:
+        if self.lr == 0:
+            logger.info("Dummy training with 0 lr, skipping reindexing.")
+
+        else:
             for i in tqdm(range(0, len(self.corpus), batch_size)):
                 batch_premises = self.corpus.all_premises[i : i + batch_size]
                 tokenized_premises = self.tokenizer(
@@ -208,8 +211,6 @@ class PremiseRetriever(pl.LightningModule):
                     tokenized_premises.input_ids, tokenized_premises.attention_mask
                 )
 
-        else:
-            logger.info("Dummy training with 0 lr, skipping reindexing.")
             
         self.embeddings_staled = False
 
