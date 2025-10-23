@@ -341,7 +341,7 @@ class Corpus:
         """Return a boolean mask for accessible premises at position ``pos`` in file ``path``.
         
         The mask has the same length as self.all_premises, with True for accessible premises.
-        Uses the optimized get_accessible_premise_indexes method.
+        Uses the optimized get_accessible_premise_indexes_graph method.
         """
         mask = torch.zeros(len(self.all_premises), dtype=torch.bool, device=device)
         accessible_indices = self.get_accessible_premise_indexes_graph(path, pos)
