@@ -19,7 +19,6 @@ trainer:
 
 model:
   model_name: kaiyuy/leandojo-lean4-retriever-byt5-small
-  lr: 0
   warmup_steps: 0
   num_retrieved: 100
 
