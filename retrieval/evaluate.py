@@ -48,54 +48,50 @@ def _eval(data, preds_map) -> Tuple[float, float, float]:
     return R1, R10, MRR
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Script for evaluating the premise retriever."
-    )
-    parser.add_argument(
-        "--preds-file",
-        type=str,
-        required=True,
-        help="Path to the retriever's predictions file.",
-    )
-    parser.add_argument(
-        "--data-path",
-        type=str,
-        required=True,
-        help="Path to the directory containing the train/val/test splits.",
-    )
-    parser.add_argument(
-        "--splits",
-        type=str,
-        nargs="+",
-        default=["train", "val", "test"],
-        help="Which splits to evaluate on (default: all three)",
-    )
-    args = parser.parse_args()
-    logger.info(args)
 
-    logger.info(f"Loading predictions from {args.preds_file}")
-    preds = pickle.load(open(args.preds_file, "rb"))
-    preds_map = {
-        (p["file_path"], p["full_name"], tuple(p["start"]), p["tactic_idx"]): p
-        for p in preds
-    }
-    assert len(preds) == len(preds_map), "Duplicate predictions found!"
+parser = argparse.ArgumentParser(
+    description="Script for evaluating the premise retriever."
+)
+parser.add_argument(
+    "--preds-file",
+    type=str,
+    required=True,
+    help="Path to the retriever's predictions file.",
+)
+parser.add_argument(
+    "--data-path",
+    type=str,
+    required=True,
+    help="Path to the directory containing the train/val/test splits.",
+)
+parser.add_argument(
+    "--splits",
+    type=str,
+    nargs="+",
+    default=["train", "val", "test"],
+    help="Which splits to evaluate on (default: all three)",
+)
+args = parser.parse_args()
+logger.info(args)
 
-    for split in args.splits:
-        data_path = os.path.join(args.data_path, f"{split}.json")
-        if not os.path.exists(data_path):
-            logger.warning(f"Split file not found: {data_path}, skipping")
-            continue
-        
-        data = json.load(open(data_path))
-        logger.info(f"Evaluating on {data_path}")
-        R1, R10, MRR = _eval(data, preds_map)
-        if R1 == 0.0 and R10 == 0.0 and MRR == 0.0:
-            logger.warning(f"No matching predictions found for {split}")
-        else:
-            logger.info(f"R@1 = {R1:.2f}%, R@10 = {R10:.2f}%, MRR = {MRR:.4f}")
+logger.info(f"Loading predictions from {args.preds_file}")
+preds = pickle.load(open(args.preds_file, "rb"))
+preds_map = {
+    (p["file_path"], p["full_name"], tuple(p["start"]), p["tactic_idx"]): p
+    for p in preds
+}
+assert len(preds) == len(preds_map), "Duplicate predictions found!"
 
-
-if __name__ == "__main__":
-    main()
+for split in args.splits:
+    data_path = os.path.join(args.data_path, f"{split}.json")
+    if not os.path.exists(data_path):
+        logger.warning(f"Split file not found: {data_path}, skipping")
+        continue
+    
+    data = json.load(open(data_path))
+    logger.info(f"Evaluating on {data_path}")
+    R1, R10, MRR = _eval(data, preds_map)
+    if R1 == 0.0 and R10 == 0.0 and MRR == 0.0:
+        logger.warning(f"No matching predictions found for {split}")
+    else:
+        logger.info(f"R@1 = {R1:.2f}%, R@10 = {R10:.2f}%, MRR = {MRR:.4f}")
