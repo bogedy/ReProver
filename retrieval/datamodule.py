@@ -260,8 +260,11 @@ class RetrievalDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         if stage in (None, "fit"):
+            paths = [os.path.join(self.data_path, "train.json")]
+            if stage == "predict":
+                paths = []
             self.ds_train = RetrievalDataset(
-                [os.path.join(self.data_path, "train.json")],
+                paths,
                 self.corpus,
                 self.num_negatives,
                 self.num_in_file_negatives,
