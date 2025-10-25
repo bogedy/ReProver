@@ -231,6 +231,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         prefetch_factor: Optional[int] = None,
         indexed_corpus_path: Optional[str] = None,
         predict_splits: Optional[List[str]] = None,
+        pred_ds: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.data_path = data_path
@@ -249,6 +250,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.corpus = Corpus(corpus_path)
         self.indexed_corpus = None
+        self.pred_ds = pred_ds
 
         metadata = json.load(open(os.path.join(data_path, "../metadata.json")))
         repo = LeanGitRepo(**metadata["from_repo"])
@@ -257,16 +259,17 @@ class RetrievalDataModule(pl.LightningDataModule):
         pass
 
     def setup(self, stage: Optional[str] = None) -> None:
-        self.ds_train = RetrievalDataset(
-            [os.path.join(self.data_path, "train.json")],
-            self.corpus,
-            self.num_negatives,
-            self.num_in_file_negatives,
-            self.max_seq_len,
-            self.tokenizer,
-            is_train=True,
-            for_prediction=False,
-        )
+        if stage in (None, "fit"):
+            self.ds_train = RetrievalDataset(
+                [os.path.join(self.data_path, "train.json")],
+                self.corpus,
+                self.num_negatives,
+                self.num_in_file_negatives,
+                self.max_seq_len,
+                self.tokenizer,
+                is_train=True,
+                for_prediction=False,
+            )
 
         if stage in (None, "fit", "validate"):
             self.ds_val = RetrievalDataset(
@@ -281,11 +284,16 @@ class RetrievalDataModule(pl.LightningDataModule):
             )
 
         if stage in (None, "fit", "predict"):
-            self.ds_pred = RetrievalDataset(
-                [
+            data_files = []
+            if self.pred_ds is not None:
+                data_files.append(self.pred_ds)
+            if self.predict_splits is not None:
+                data_files += [
                     os.path.join(self.data_path, f"{split}.json")
                     for split in self.predict_splits
-                ],
+                ]
+            self.ds_pred = RetrievalDataset(
+                data_files,
                 self.corpus,
                 self.num_negatives,
                 self.num_in_file_negatives,
