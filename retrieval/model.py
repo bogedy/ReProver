@@ -34,6 +34,7 @@ class PremiseRetriever(pl.LightningModule):
         warmup_steps: int,
         max_seq_len: int,
         num_retrieved: int = 100,
+        skip_reindexing: bool = False,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -44,7 +45,7 @@ class PremiseRetriever(pl.LightningModule):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.encoder = AutoModelForTextEncoding.from_pretrained(model_name)
         self.embeddings_staled = True
-
+        self.skip_reindexing = skip_reindexing
     @classmethod
     def load(cls, ckpt_path: str, device, freeze: bool) -> "PremiseRetriever":
         return load_checkpoint(cls, ckpt_path, device, freeze)
@@ -53,7 +54,7 @@ class PremiseRetriever(pl.LightningModule):
     def load_hf(
         cls, ckpt_path: str, max_seq_len: int, device: int, dtype=None
     ) -> "PremiseRetriever":
-        model = PremiseRetriever(ckpt_path, 1e-9, 0, max_seq_len, 100).to(device).eval()
+        model = PremiseRetriever(ckpt_path, 0, 0, max_seq_len, 100).to(device).eval()
         if dtype is not None:
             return model.to(dtype)
         elif (
@@ -194,8 +195,8 @@ class PremiseRetriever(pl.LightningModule):
             device=self.device,
         )
 
-        if self.lr == 0:
-            logger.info("Dummy training with 0 lr, skipping reindexing.")
+        if self.skip_reindexing:
+            logger.info("skip_reindexing is True, skipping reindexing.")
 
         else:
             for i in tqdm(range(0, len(self.corpus), batch_size)):
