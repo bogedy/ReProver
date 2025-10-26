@@ -32,6 +32,7 @@ class RetrievalDataset(Dataset):
         is_train: bool,
         for_prediction: bool = False,
         dummy_set: bool = False,
+        custom_queries_path: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.corpus = corpus
@@ -41,6 +42,11 @@ class RetrievalDataset(Dataset):
         self.tokenizer = tokenizer
         self.is_train = is_train
         self.for_prediction = for_prediction
+
+        if custom_queries_path is not None:
+            self.custom_queries = json.load(open(custom_queries_path))
+        else:
+            self.custom_queries = None
 
         self.data = list(
             itertools.chain.from_iterable(self._load_data(path) for path in data_paths)
@@ -148,19 +154,22 @@ class RetrievalDataset(Dataset):
         batch = {}
 
         # Tokenize the context.
-        context = [ex["context"] for ex in examples]
+        if self.custom_queries is not None:
+            context_to_tokenize = [self.custom_queries[ex["context"].get_custom_id(ex["tactic_idx"])] for ex in examples]
+        else:
+            context_to_tokenize = [ex["context"].serialize() for ex in examples]
         tokenized_context = self.tokenizer(
-            [c.serialize() for c in context],
+            context_to_tokenize,
             padding="longest",
             max_length=self.max_seq_len,
             truncation=True,
             return_tensors="pt",
         )
-        batch["context"] = context
+        batch["context"] = context_to_tokenize
         batch["context_ids"] = tokenized_context.input_ids
         batch["context_mask"] = tokenized_context.attention_mask
 
-        # Add accessible masks if available (for prediction)
+        # Add accessible premises masks if available (for prediction)
         if "accessible_mask" in examples[0]:
             batch["accessible_masks"] = torch.stack([ex["accessible_mask"] for ex in examples])   
 
@@ -235,6 +244,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         indexed_corpus_path: Optional[str] = None,
         predict_splits: Optional[List[str]] = None,
         pred_ds: Optional[str] = None,
+        custom_queries_path: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.data_path = data_path
@@ -248,7 +258,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         self.prefetch_factor = prefetch_factor
         self.indexed_corpus_path = indexed_corpus_path
         self.predict_splits = predict_splits
-
+        self.custom_queries_path = custom_queries_path
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         if self.indexed_corpus_path is not None:
             with open(self.indexed_corpus_path, "rb") as f:
@@ -313,6 +323,7 @@ class RetrievalDataModule(pl.LightningDataModule):
                 self.tokenizer,
                 is_train=False,
                 for_prediction=True,
+                custom_queries_path=self.custom_queries_path,
             )
 
     def train_dataloader(self) -> DataLoader:
