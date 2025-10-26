@@ -4,6 +4,7 @@ import os
 import json
 import torch
 import random
+import pickle
 import itertools
 from tqdm import tqdm
 from loguru import logger
@@ -249,7 +250,14 @@ class RetrievalDataModule(pl.LightningDataModule):
         self.predict_splits = predict_splits
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.corpus = Corpus(corpus_path)
+        if self.indexed_corpus_path is not None:
+            with open(self.indexed_corpus_path, "rb") as f:
+                logger.info(f"Loading pre-indexed corpus.")
+                indexed_corpus = pickle.load(f)
+                self.corpus = indexed_corpus.corpus
+                self.embeddings = indexed_corpus.embeddings
+        else:
+            self.corpus = Corpus(corpus_path)
         self.indexed_corpus = None
         self.pred_ds = pred_ds
 

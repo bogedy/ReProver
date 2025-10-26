@@ -281,12 +281,9 @@ class PremiseRetriever(pl.LightningModule):
         # Check if datamodule has an indexed corpus path
         indexed_corpus_path = getattr(self.trainer.datamodule, 'indexed_corpus_path', None)
         
-        if indexed_corpus_path is not None:
-            logger.info(f"Loading pre-indexed corpus from {indexed_corpus_path}")
-            indexed_corpus = pickle.load(open(indexed_corpus_path, "rb"))
-            # self.corpus = indexed_corpus.corpus
+        if self.trainer.datamodule.embeddings is not None:
             self.corpus = self.trainer.datamodule.corpus
-            self.corpus_embeddings = indexed_corpus.embeddings.to(self.device)
+            self.corpus_embeddings = self.trainer.datamodule.embeddings.to(self.device)
             
             self.embeddings_staled = False
             logger.info("Pre-indexed corpus loaded, skipping reindexing")
