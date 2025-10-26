@@ -61,7 +61,6 @@ parser.add_argument(
 parser.add_argument(
     "--data-path",
     type=str,
-    required=True,
     help="Path to the directory containing the train/val/test splits.",
 )
 parser.add_argument(
