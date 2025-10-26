@@ -71,6 +71,11 @@ parser.add_argument(
     default=["train", "val", "test"],
     help="Which splits to evaluate on (default: all three)",
 )
+parser.add_argument(
+    "--custom-ds",
+    type=str,
+    help="Path to a custom dataset file.",
+)
 args = parser.parse_args()
 logger.info(args)
 
@@ -82,16 +87,22 @@ preds_map = {
 }
 assert len(preds) == len(preds_map), "Duplicate predictions found!"
 
-for split in args.splits:
-    data_path = os.path.join(args.data_path, f"{split}.json")
-    if not os.path.exists(data_path):
-        logger.warning(f"Split file not found: {data_path}, skipping")
-        continue
+data_files = []
+if args.custom_ds is not None:
+    data_files.append(args.custom_ds)
+else:
+    for split in args.splits:
+        data_path = os.path.join(args.data_path, f"{split}.json")
+        if not os.path.exists(data_path):
+            logger.warning(f"Split file not found: {data_path}, skipping")
+            continue
+        data_files.append(data_path)
     
-    data = json.load(open(data_path))
-    logger.info(f"Evaluating on {data_path}")
+for data_file in data_files:
+    data = json.load(open(data_file))
+    logger.info(f"Evaluating on {data_file}")
     R1, R10, MRR = _eval(data, preds_map)
     if R1 == 0.0 and R10 == 0.0 and MRR == 0.0:
-        logger.warning(f"No matching predictions found for {split}")
+        logger.warning(f"No matching predictions found for {data_file}")
     else:
         logger.info(f"R@1 = {R1:.2f}%, R@10 = {R10:.2f}%, MRR = {MRR:.4f}")
