@@ -55,6 +55,10 @@ class Context:
         """Serialize the context into a string for Transformers."""
         return self.state
 
+    def get_custom_id(self, tactic_idx: int) -> str:
+        return f"{self.path}|||{self.theorem_full_name}|||{self.theorem_pos}|||{tactic_idx}"
+        
+
 
 @dataclass(unsafe_hash=True)
 class Premise:
