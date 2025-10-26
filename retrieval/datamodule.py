@@ -323,6 +323,7 @@ class RetrievalDataModule(pl.LightningDataModule):
                 self.tokenizer,
                 is_train=False,
                 for_prediction=True,
+                custom_queries_path=self.custom_queries_path,
             )
 
     def train_dataloader(self) -> DataLoader:
