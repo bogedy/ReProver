@@ -30,6 +30,7 @@ class RetrievalDataset(Dataset):
         tokenizer,
         is_train: bool,
         for_prediction: bool = False,
+        small_subset: Optional[int] = None,
     ) -> None:
         super().__init__()
         self.corpus = corpus
@@ -42,6 +43,8 @@ class RetrievalDataset(Dataset):
         self.data = list(
             itertools.chain.from_iterable(self._load_data(path) for path in data_paths)
         )
+        if small_subset is not None:
+            self.data = self.data[:small_subset]
 
     def _load_data(self, data_path: str) -> List[Example]:
         data = []
@@ -259,11 +262,10 @@ class RetrievalDataModule(pl.LightningDataModule):
         pass
 
     def setup(self, stage: Optional[str] = None) -> None:
-        paths = []
-        if stage != "predict":
-            paths = [os.path.join(self.data_path, "train.json")]
+        
+            
         self.ds_train = RetrievalDataset(
-            paths,
+            [os.path.join(self.data_path, "train.json")],
             self.corpus,
             self.num_negatives,
             self.num_in_file_negatives,
@@ -271,6 +273,7 @@ class RetrievalDataModule(pl.LightningDataModule):
             self.tokenizer,
             is_train=True,
             for_prediction=False,
+            small_subset= 1 if stage in ("val", "test", "predict") else None,
         )
 
         if stage in (None, "fit", "validate"):
