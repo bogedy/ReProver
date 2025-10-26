@@ -4,6 +4,7 @@ import os
 import json
 import torch
 import random
+import pickle
 import itertools
 from tqdm import tqdm
 from loguru import logger
@@ -30,6 +31,7 @@ class RetrievalDataset(Dataset):
         tokenizer,
         is_train: bool,
         for_prediction: bool = False,
+        dummy_set: bool = False,
     ) -> None:
         super().__init__()
         self.corpus = corpus
@@ -39,9 +41,10 @@ class RetrievalDataset(Dataset):
         self.tokenizer = tokenizer
         self.is_train = is_train
         self.for_prediction = for_prediction
+
         self.data = list(
             itertools.chain.from_iterable(self._load_data(path) for path in data_paths)
-        )
+        ) if not dummy_set else [None]
 
     def _load_data(self, data_path: str) -> List[Example]:
         data = []
@@ -244,11 +247,17 @@ class RetrievalDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.prefetch_factor = prefetch_factor
         self.indexed_corpus_path = indexed_corpus_path
-
-        self.predict_splits = predict_splits if predict_splits is not None else ["train", "val", "test"]
+        self.predict_splits = predict_splits
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.corpus = Corpus(corpus_path)
+        if self.indexed_corpus_path is not None:
+            with open(self.indexed_corpus_path, "rb") as f:
+                logger.info(f"Loading pre-indexed corpus.")
+                indexed_corpus = pickle.load(f)
+                self.corpus = indexed_corpus.corpus
+                self.embeddings = indexed_corpus.embeddings
+        else:
+            self.corpus = Corpus(corpus_path)
         self.indexed_corpus = None
         self.pred_ds = pred_ds
 
@@ -259,20 +268,19 @@ class RetrievalDataModule(pl.LightningDataModule):
         pass
 
     def setup(self, stage: Optional[str] = None) -> None:
-        if stage in (None, "fit"):
-            paths = [os.path.join(self.data_path, "train.json")]
-            if stage == "predict":
-                paths = []
-            self.ds_train = RetrievalDataset(
-                paths,
-                self.corpus,
-                self.num_negatives,
-                self.num_in_file_negatives,
-                self.max_seq_len,
-                self.tokenizer,
-                is_train=True,
-                for_prediction=False,
-            )
+        
+        # aparrently the lightningCLI always needs a train dataset, even if we are not training
+        self.ds_train = RetrievalDataset(
+            [os.path.join(self.data_path, "train.json")],
+            self.corpus,
+            self.num_negatives,
+            self.num_in_file_negatives,
+            self.max_seq_len,
+            self.tokenizer,
+            is_train=True,
+            for_prediction=False,
+            dummy_set=True if stage in ("val", "test", "predict") else False,
+        )
 
         if stage in (None, "fit", "validate"):
             self.ds_val = RetrievalDataset(
@@ -290,10 +298,11 @@ class RetrievalDataModule(pl.LightningDataModule):
             data_files = []
             if self.pred_ds is not None:
                 data_files.append(self.pred_ds)
-            if self.predict_splits is not None:
+            else:
                 data_files += [
                     os.path.join(self.data_path, f"{split}.json")
-                    for split in self.predict_splits
+                    for split in (self.predict_splits if self.predict_splits is not None 
+                    else ['train', 'val', 'test'])
                 ]
             self.ds_pred = RetrievalDataset(
                 data_files,
