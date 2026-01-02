@@ -165,7 +165,7 @@ class RetrievalDataset(Dataset):
             truncation=True,
             return_tensors="pt",
         )
-        batch["context"] = context_to_tokenize
+        batch["context_str"] = context_to_tokenize
         batch["context_ids"] = tokenized_context.input_ids
         batch["context_mask"] = tokenized_context.attention_mask
 
