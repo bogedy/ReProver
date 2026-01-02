@@ -48,9 +48,31 @@ class RetrievalDataset(Dataset):
         else:
             self.custom_queries = None
 
-        self.data = list(
-            itertools.chain.from_iterable(self._load_data(path) for path in data_paths)
-        ) if not dummy_set else [None]
+        if dummy_set:
+            # Create a minimal dummy example using the first premise in the corpus
+            first_premise = corpus.all_premises[0]
+            dummy_context = Context(
+                path=first_premise.path,
+                theorem_full_name="dummy_theorem",
+                theorem_pos=first_premise.start,
+                state="dummy ⊢ dummy",
+            )
+            self.data = [{
+                "url": "dummy",
+                "commit": "dummy",
+                "file_path": first_premise.path,
+                "full_name": "dummy_theorem",
+                "start": [first_premise.start.line, first_premise.start.column],
+                "tactic_idx": 0,
+                "context": dummy_context,
+                "pos_premise": first_premise,
+                "neg_premises": [first_premise] * num_negatives,
+                "all_pos_premises": [first_premise],
+            }]
+        else:
+            self.data = list(
+                itertools.chain.from_iterable(self._load_data(path) for path in data_paths)
+            )
 
     def _load_data(self, data_path: str) -> List[Example]:
         data = []
