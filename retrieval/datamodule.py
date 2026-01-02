@@ -62,7 +62,7 @@ class RetrievalDataset(Dataset):
                 "commit": "dummy",
                 "file_path": first_premise.path,
                 "full_name": "dummy_theorem",
-                "start": [first_premise.start.line, first_premise.start.column],
+                "start": [first_premise.start[0], first_premise.start[1]],
                 "tactic_idx": 0,
                 "context": dummy_context,
                 "pos_premise": first_premise,
