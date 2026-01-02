@@ -245,6 +245,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         predict_splits: Optional[List[str]] = None,
         pred_ds: Optional[str] = None,
         custom_queries_path: Optional[str] = None,
+        dummy_train: bool = False,
     ) -> None:
         super().__init__()
         self.data_path = data_path
@@ -270,6 +271,7 @@ class RetrievalDataModule(pl.LightningDataModule):
             self.corpus = Corpus(corpus_path)
         self.indexed_corpus = None
         self.pred_ds = pred_ds
+        self.dummy_train = dummy_train
 
         metadata = json.load(open(os.path.join(data_path, "../metadata.json")))
         repo = LeanGitRepo(**metadata["from_repo"])
@@ -289,7 +291,7 @@ class RetrievalDataModule(pl.LightningDataModule):
             self.tokenizer,
             is_train=True,
             for_prediction=False,
-            dummy_set=True if stage in ("val", "test", "predict") else False,
+            dummy_set=self.dummy_train or stage in ("val", "test", "predict"),
         )
 
         if stage in (None, "fit", "validate"):
