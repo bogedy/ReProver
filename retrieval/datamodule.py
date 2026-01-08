@@ -68,7 +68,7 @@ class RetrievalDataset(Dataset):
                 "pos_premise": first_premise,
                 "neg_premises": [first_premise] * num_negatives,
                 "all_pos_premises": [first_premise],
-            }]
+            }]*2 # at least 2 examples
         else:
             self.data = list(
                 itertools.chain.from_iterable(self._load_data(path) for path in data_paths)

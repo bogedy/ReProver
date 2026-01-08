@@ -22,6 +22,7 @@ model:
   lr: 0
   warmup_steps: 0
   num_retrieved: 100
+  skip_reindexing: true
 
 data:
   data_path: data/leandojo_benchmark_4/random/
@@ -33,3 +34,4 @@ data:
   max_seq_len: 256
   num_workers: 4
   prefetch_factor: 2
+  dummy_set: true
