@@ -2,6 +2,8 @@
 
 my fork to add some quality of life improvements. i wanted to avoid reindexing the embeddings when dummy training the retrieval model with 0 lr.
 
+Now running retrival inference using boolean masks to avoid lengthy loops. 
+
 # Retrieval-Augmented Prover (ReProver)
 
 ![Model](images/ReProver.jpg)
