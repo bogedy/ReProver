@@ -246,11 +246,19 @@ class PremiseRetriever(pl.LightningModule):
             first_match_found = False
 
             for j in range(self.num_retrieved):
-                TP = len(all_pos_premises.intersection(premises[: (j + 1)]))
-                recall[j].append(float(TP) / len(all_pos_premises))
-                if premises[j] in all_pos_premises and not first_match_found:
-                    MRR.append(1.0 / (j + 1))
-                    first_match_found = True
+                if j < len(premises):
+                    TP = len(all_pos_premises.intersection(premises[: (j + 1)]))
+                    recall[j].append(float(TP) / len(all_pos_premises))
+                    if premises[j] in all_pos_premises and not first_match_found:
+                        MRR.append(1.0 / (j + 1))
+                        first_match_found = True
+                else:
+                    # Not enough premises retrieved, use the last known recall value
+                    # this is just an edge case when using the dummy trainer. 
+                    if j > 0 and recall[j-1]:
+                        recall[j].append(recall[j-1][-1])
+                    else:
+                        recall[j].append(0.0)
             if not first_match_found:
                 MRR.append(0.0)
 

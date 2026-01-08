@@ -430,8 +430,7 @@ class Corpus:
                     scores[j].append(similarities[j, i].item())
                     if len(results[j]) >= k:
                         break
-            else:
-                raise ValueError
+            # No error if fewer than k premises found - just return what we have
 
         return results, scores
 
