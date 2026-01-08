@@ -267,7 +267,6 @@ class RetrievalDataModule(pl.LightningDataModule):
         predict_splits: Optional[List[str]] = None,
         pred_ds: Optional[str] = None,
         custom_queries_path: Optional[str] = None,
-        dummy_train: bool = False,
     ) -> None:
         super().__init__()
         self.data_path = data_path
@@ -293,7 +292,6 @@ class RetrievalDataModule(pl.LightningDataModule):
             self.corpus = Corpus(corpus_path)
         self.indexed_corpus = None
         self.pred_ds = pred_ds
-        self.dummy_train = dummy_train
 
         metadata = json.load(open(os.path.join(data_path, "../metadata.json")))
         repo = LeanGitRepo(**metadata["from_repo"])
@@ -303,7 +301,7 @@ class RetrievalDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         
-        # aparrently the lightningCLI always needs a train dataset, even if we are not training
+        # LightningCLI always needs a train dataset, even if we are not training
         self.ds_train = RetrievalDataset(
             [os.path.join(self.data_path, "train.json")],
             self.corpus,
@@ -313,7 +311,7 @@ class RetrievalDataModule(pl.LightningDataModule):
             self.tokenizer,
             is_train=True,
             for_prediction=False,
-            dummy_set=self.dummy_train or stage in ("val", "test", "predict"),
+            dummy_set=stage in ("validate", "test", "predict"),
         )
 
         if stage in (None, "fit", "validate"):
@@ -326,10 +324,9 @@ class RetrievalDataModule(pl.LightningDataModule):
                 self.tokenizer,
                 is_train=False,
                 for_prediction=False,
-                dummy_set=self.dummy_train,
             )
 
-        if stage in (None, "predict") or (stage == "fit" and not self.dummy_train):
+        if stage in (None, "predict"):
             data_files = []
             if self.pred_ds is not None:
                 data_files.append(self.pred_ds)

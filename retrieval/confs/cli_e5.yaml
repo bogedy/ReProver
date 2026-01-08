@@ -15,7 +15,7 @@ trainer:
     class_path: pytorch_lightning.loggers.WandbLogger
     init_args:
       name: train_retriever_e5
-      save_dir: logs/e5
+      save_dir: out/train_e5
 
 model:
   model_name: intfloat/multilingual-e5-large-instruct
