@@ -326,9 +326,10 @@ class RetrievalDataModule(pl.LightningDataModule):
                 self.tokenizer,
                 is_train=False,
                 for_prediction=False,
+                dummy_set=self.dummy_train,
             )
 
-        if stage in (None, "fit", "predict"):
+        if stage in (None, "predict") or (stage == "fit" and not self.dummy_train):
             data_files = []
             if self.pred_ds is not None:
                 data_files.append(self.pred_ds)
