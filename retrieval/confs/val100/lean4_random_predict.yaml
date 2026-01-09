@@ -43,6 +43,7 @@ model:
   num_retrieved: 100
 
 data:
+  data_path: data/leandojo_benchmark_4/random/
   corpus_path: data/leandojo_benchmark_4/corpus.jsonl
   pred_ds: data/leandojo_benchmark_4/random/val_100.json
   indexed_corpus_path: out/train_retriever_random/index.pkl
