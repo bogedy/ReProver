@@ -33,6 +33,7 @@ class RetrievalDataset(Dataset):
         for_prediction: bool = False,
         dummy_set: bool = False,
         custom_queries_path: Optional[str] = None,
+        custom_queries_prefix: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.corpus = corpus
@@ -42,9 +43,17 @@ class RetrievalDataset(Dataset):
         self.tokenizer = tokenizer
         self.is_train = is_train
         self.for_prediction = for_prediction
+        self.custom_queries_prefix = custom_queries_prefix or ""
 
         if custom_queries_path is not None:
-            self.custom_queries = json.load(open(custom_queries_path))
+            # Load from OpenAI batch API JSONL format
+            self.custom_queries = {}
+            with open(custom_queries_path) as f:
+                for line in f:
+                    entry = json.loads(line)
+                    custom_id = entry["custom_id"]
+                    content = entry["response"]["body"]["choices"][0]["message"]["content"]
+                    self.custom_queries[custom_id] = content
         else:
             self.custom_queries = None
 
@@ -177,7 +186,7 @@ class RetrievalDataset(Dataset):
 
         # Tokenize the context.
         if self.custom_queries is not None:
-            context_to_tokenize = [self.custom_queries[ex["context"].get_custom_id(ex["tactic_idx"])] for ex in examples]
+            context_to_tokenize = [self.custom_queries_prefix + self.custom_queries[ex["context"].get_custom_id(ex["tactic_idx"])] for ex in examples]
         else:
             context_to_tokenize = [ex["context"].serialize() for ex in examples]
         tokenized_context = self.tokenizer(
@@ -267,6 +276,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         predict_splits: Optional[List[str]] = None,
         pred_ds: Optional[str] = None,
         custom_queries_path: Optional[str] = None,
+        custom_queries_prefix: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.data_path = data_path
@@ -281,6 +291,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         self.indexed_corpus_path = indexed_corpus_path
         self.predict_splits = predict_splits
         self.custom_queries_path = custom_queries_path
+        self.custom_queries_prefix = custom_queries_prefix
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         if self.indexed_corpus_path is not None:
             with open(self.indexed_corpus_path, "rb") as f:
@@ -346,6 +357,7 @@ class RetrievalDataModule(pl.LightningDataModule):
                 is_train=False,
                 for_prediction=True,
                 custom_queries_path=self.custom_queries_path,
+                custom_queries_prefix=self.custom_queries_prefix,
             )
 
     def train_dataloader(self) -> DataLoader:

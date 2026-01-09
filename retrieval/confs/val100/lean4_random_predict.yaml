@@ -12,8 +12,8 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.WandbLogger
     init_args:
-      name: null
-      save_dir: null
+      name: predict_retriever_val100
+      save_dir: out/predict_retriever_val100
   gradient_clip_val: 1.0
   max_steps: 800000
   callbacks:
@@ -34,18 +34,22 @@ trainer:
         mode: max
         verbose: true
 
+ckpt_path: out/train_retriever_random/lightning_logs/ywq35zh8/checkpoints/epoch\=0-step\=1.ckpt
+
 model:
-  model_name: intfloat/multilingual-e5-large-instruct
+  model_name: google/byt5-small
   lr: 1e-4
   warmup_steps: 2000
   num_retrieved: 100
 
 data:
-  data_path: data/leandojo_benchmark_4/random/
   corpus_path: data/leandojo_benchmark_4/corpus.jsonl
-  num_negatives: 3
-  num_in_file_negatives: 1
-  batch_size: 8
+  pred_ds: data/leandojo_benchmark_4/random/val_100.json
+  indexed_corpus_path: out/train_retriever_random/index.pkl
+  num_negatives: 1
+  num_in_file_negatives: 0
+  batch_size: 1
   eval_batch_size: 64
-  max_seq_len: 512
+  max_seq_len: 1024
   num_workers: 4
+  prefetch_factor: 2
