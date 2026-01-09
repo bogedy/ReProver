@@ -57,7 +57,7 @@ class Context:
 
     def get_custom_id(self, tactic_idx: int) -> str:
         # Use list format to match OpenAI batch API custom_id format
-        pos_list = [self.theorem_pos.line, self.theorem_pos.column]
+        pos_list = [self.theorem_pos.line_nb, self.theorem_pos.column_nb]
         return f"{self.path}|||{self.theorem_full_name}|||{pos_list}|||{tactic_idx}"
         
 
