@@ -6,6 +6,7 @@ import pickle
 import argparse
 import numpy as np
 from tqdm import tqdm
+from pathlib import Path
 from typing import Tuple, Optional, List
 from loguru import logger
 
@@ -120,7 +121,7 @@ for data_file in data_files:
     })
 
 if args.output:
-    with open(args.output, "w") as f:
+    with open(Path(args.output) / "eval.jsonl", "w") as f:
         for result in results:
             f.write(json.dumps(result) + "\n")
     logger.info(f"Results saved to {args.output}")
