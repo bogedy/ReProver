@@ -34,7 +34,7 @@ trainer:
         mode: max
         verbose: true
 
-ckpt_path: out/train_retriever_random/lightning_logs/ywq35zh8/checkpoints/epoch\=0-step\=1.ckpt
+ckpt_path: out/train_retriever_random/lightning_logs/ywq35zh8/checkpoints/epoch\=0-step\=1.ckpt/
 
 model:
   model_name: google/byt5-small
