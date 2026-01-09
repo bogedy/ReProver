@@ -10,7 +10,7 @@ from loguru import logger
 import pytorch_lightning as pl
 import torch.nn.functional as F
 from typing import List, Dict, Any, Tuple, Union
-from transformers import AutoModelForTextEncoding, AutoTokenizer
+from transformers import AutoModel, AutoModelForTextEncoding, AutoTokenizer
 
 from common import (
     Premise,
@@ -43,7 +43,12 @@ class PremiseRetriever(pl.LightningModule):
         self.num_retrieved = num_retrieved
         self.max_seq_len = max_seq_len
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.encoder = AutoModelForTextEncoding.from_pretrained(model_name)
+        try:
+            self.encoder = AutoModelForTextEncoding.from_pretrained(model_name)
+        except ValueError:
+            # Fallback for decoder-based embedding models (e.g., embeddinggemma)
+            logger.info(f"AutoModelForTextEncoding doesn't support {model_name}, falling back to AutoModel")
+            self.encoder = AutoModel.from_pretrained(model_name)
         self.embeddings_staled = True
         self.skip_reindexing = skip_reindexing
     @classmethod
