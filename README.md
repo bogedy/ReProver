@@ -2,7 +2,17 @@
 
 my fork to add some quality of life improvements. i wanted to avoid reindexing the embeddings when dummy training the retrieval model with 0 lr.
 
-Now running retrival inference using boolean masks to avoid lengthy loops. 
+Now running retrieval inference using boolean masks to avoid lengthy loops. 
+
+Other changes:
+- fix double loading dataloader
+- bm25 exps
+- dummy training works better
+- custom ds args
+- configs for max seq length
+- replace AutoModelForTextEncoding with AutoModel, more compatibility.
+- added the ability to use custom queries from openai 
+- added custom_ids for those queries
 
 # Retrieval-Augmented Prover (ReProver)
 
