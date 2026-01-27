@@ -22,6 +22,7 @@ def main() -> None:
         required=True,
     )
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--max-seq-len", type=int, default=2048)
     args = parser.parse_args()
     logger.info(args)
 
@@ -30,7 +31,7 @@ def main() -> None:
         device = torch.device("cpu")
     else:
         device = torch.device("cuda")
-    model = PremiseRetriever.load_hf(args.ckpt_path, 2048, device)
+    model = PremiseRetriever.load_hf(args.ckpt_path, args.max_seq_len, device)
     model.load_corpus(args.corpus_path)
     model.reindex_corpus(batch_size=args.batch_size)
 

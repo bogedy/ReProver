@@ -10,7 +10,7 @@ from loguru import logger
 import pytorch_lightning as pl
 import torch.nn.functional as F
 from typing import List, Dict, Any, Tuple, Union
-from transformers import AutoModelForTextEncoding, AutoTokenizer
+from transformers import AutoModel, AutoModelForTextEncoding, AutoTokenizer
 
 from common import (
     Premise,
@@ -43,7 +43,12 @@ class PremiseRetriever(pl.LightningModule):
         self.num_retrieved = num_retrieved
         self.max_seq_len = max_seq_len
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.encoder = AutoModelForTextEncoding.from_pretrained(model_name)
+        try:
+            self.encoder = AutoModelForTextEncoding.from_pretrained(model_name)
+        except ValueError:
+            # Fallback for decoder-based embedding models (e.g., embeddinggemma)
+            logger.info(f"AutoModelForTextEncoding doesn't support {model_name}, falling back to AutoModel")
+            self.encoder = AutoModel.from_pretrained(model_name)
         self.embeddings_staled = True
         self.skip_reindexing = skip_reindexing
     @classmethod
@@ -246,11 +251,19 @@ class PremiseRetriever(pl.LightningModule):
             first_match_found = False
 
             for j in range(self.num_retrieved):
-                TP = len(all_pos_premises.intersection(premises[: (j + 1)]))
-                recall[j].append(float(TP) / len(all_pos_premises))
-                if premises[j] in all_pos_premises and not first_match_found:
-                    MRR.append(1.0 / (j + 1))
-                    first_match_found = True
+                if j < len(premises):
+                    TP = len(all_pos_premises.intersection(premises[: (j + 1)]))
+                    recall[j].append(float(TP) / len(all_pos_premises))
+                    if premises[j] in all_pos_premises and not first_match_found:
+                        MRR.append(1.0 / (j + 1))
+                        first_match_found = True
+                else:
+                    # Not enough premises retrieved, use the last known recall value
+                    # this is just an edge case when using the dummy trainer. 
+                    if j > 0 and recall[j-1]:
+                        recall[j].append(recall[j-1][-1])
+                    else:
+                        recall[j].append(0.0)
             if not first_match_found:
                 MRR.append(0.0)
 

@@ -28,6 +28,8 @@ def _process_theorem(
     bm25,
     num_retrieved: int,
     use_all_premises: bool,
+    custom_queries: Dict[str, str] = None,
+    custom_queries_prefix: str = "",
 ) -> List[Dict[str, Any]]:
     preds = []
     file_path = thm["file_path"]
@@ -43,7 +45,14 @@ def _process_theorem(
         ctx = Context(
             file_path, thm["full_name"], Pos(*thm["start"]), tac["state_before"]
         )
-        tokenized_ctx = tokenizer.encode(ctx.serialize()).tokens
+        
+        # Use custom query if available, otherwise use default serialization
+        if custom_queries is not None:
+            custom_id = ctx.get_custom_id(i)
+            query_str = custom_queries_prefix + custom_queries[custom_id]
+        else:
+            query_str = ctx.serialize()
+        tokenized_ctx = tokenizer.encode(query_str).tokens
 
         scores = np.array(bm25.get_batch_scores(tokenized_ctx, accessible_premise_idxs))
         scores_idxs = np.argsort(scores)[::-1][:num_retrieved]
@@ -78,9 +87,13 @@ class TheoremProcessor:
         data_path: str,
         num_retrieved: int,
         use_all_premises: bool,
+        custom_queries: Dict[str, str] = None,
+        custom_queries_prefix: str = "",
     ) -> None:
         self.num_retrieved = num_retrieved
         self.use_all_premises = use_all_premises
+        self.custom_queries = custom_queries
+        self.custom_queries_prefix = custom_queries_prefix
 
         self.tokenizer = Tokenizer.from_file(tokenizer_path)
         self.corpus = Corpus(os.path.join(data_path, "../corpus.jsonl"))
@@ -96,6 +109,8 @@ class TheoremProcessor:
             self.bm25,
             self.num_retrieved,
             self.use_all_premises,
+            self.custom_queries,
+            self.custom_queries_prefix,
         )
 
 
@@ -112,7 +127,20 @@ def main() -> None:
     )
     parser.add_argument("--num-retrieved", type=int, default=100)
     parser.add_argument("--use-all-premises", action="store_true")
-    parser.add_argument("--num-cpus", type=int, default=32)
+    parser.add_argument("--num-cpus", type=int, default=1)
+    parser.add_argument("--theorems-file", type=str, default=None)
+    parser.add_argument(
+        "--custom-queries-path",
+        type=str,
+        default=None,
+        help="Path to JSONL file with custom queries (OpenAI batch API format)",
+    )
+    parser.add_argument(
+        "--custom-queries-prefix",
+        type=str,
+        default="",
+        help="Prefix to prepend to custom queries",
+    )
     args = parser.parse_args()
     logger.info(args)
 
@@ -121,12 +149,27 @@ def main() -> None:
             f"Number of cpus requested ({args.num_cpus}) is greater than the number of cpus available ({multiprocessing.cpu_count()})"
         )
 
-    theorems = list(
-        itertools.chain.from_iterable(
-            json.load(open(os.path.join(args.data_path, f"{split}.json")))
-            for split in ("train", "val", "test")
+    # Load custom queries if provided
+    custom_queries = None
+    if args.custom_queries_path is not None:
+        custom_queries = {}
+        with open(args.custom_queries_path) as f:
+            for line in f:
+                entry = json.loads(line)
+                custom_id = entry["custom_id"]
+                content = entry["response"]["body"]["choices"][0]["message"]["content"]
+                custom_queries[custom_id] = content
+        logger.info(f"Loaded {len(custom_queries)} custom queries from {args.custom_queries_path}")
+
+    if args.theorems_file:
+        theorems = json.load(open(args.theorems_file))
+    else:
+        theorems = list(
+            itertools.chain.from_iterable(
+                json.load(open(os.path.join(args.data_path, f"{split}.json")))
+                for split in ("train", "val", "test")
+            )
         )
-    )
 
     if args.num_cpus > 1:
         pool = ActorPool(
@@ -136,6 +179,8 @@ def main() -> None:
                     args.data_path,
                     args.num_retrieved,
                     args.use_all_premises,
+                    custom_queries,
+                    args.custom_queries_prefix,
                 )
                 for _ in range(args.num_cpus)
             ]
@@ -167,6 +212,8 @@ def main() -> None:
                         bm25,
                         args.num_retrieved,
                         args.use_all_premises,
+                        custom_queries,
+                        args.custom_queries_prefix,
                     )
                     for thm in tqdm(theorems)
                 ]

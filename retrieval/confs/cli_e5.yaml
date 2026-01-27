@@ -14,11 +14,11 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.WandbLogger
     init_args:
-      name: train_retriever_dummy
-      save_dir: out/train_retriever_random
+      name: train_retriever_e5
+      save_dir: out/train_e5
 
 model:
-  model_name: kaiyuy/leandojo-lean4-retriever-byt5-small
+  model_name: intfloat/multilingual-e5-large-instruct
   lr: 0
   warmup_steps: 0
   num_retrieved: 100
@@ -31,6 +31,6 @@ data:
   num_in_file_negatives: 0
   batch_size: 1
   eval_batch_size: 64
-  max_seq_len: 1024
+  max_seq_len: 512
   num_workers: 4
   prefetch_factor: 2

@@ -6,6 +6,7 @@ import pickle
 import argparse
 import numpy as np
 from tqdm import tqdm
+from pathlib import Path
 from typing import Tuple, Optional, List
 from loguru import logger
 
@@ -75,6 +76,11 @@ parser.add_argument(
     type=str,
     help="Path to a custom dataset file.",
 )
+parser.add_argument(
+    "--output",
+    type=str,
+    help="Path to save evaluation results as JSONL.",
+)
 args = parser.parse_args()
 logger.info(args)
 
@@ -96,7 +102,8 @@ else:
             logger.warning(f"Split file not found: {data_path}, skipping")
             continue
         data_files.append(data_path)
-    
+
+results = []
 for data_file in data_files:
     data = json.load(open(data_file))
     logger.info(f"Evaluating on {data_file}")
@@ -105,3 +112,16 @@ for data_file in data_files:
         logger.warning(f"No matching predictions found for {data_file}")
     else:
         logger.info(f"R@1 = {R1:.2f}%, R@10 = {R10:.2f}%, MRR = {MRR:.4f}")
+    
+    results.append({
+        "data_file": data_file,
+        "R@1": R1,
+        "R@10": R10,
+        "MRR": MRR,
+    })
+
+if args.output:
+    with open(Path(args.output) / "eval.jsonl", "w") as f:
+        for result in results:
+            f.write(json.dumps(result) + "\n")
+    logger.info(f"Results saved to {args.output}")

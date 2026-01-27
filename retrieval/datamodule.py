@@ -33,6 +33,7 @@ class RetrievalDataset(Dataset):
         for_prediction: bool = False,
         dummy_set: bool = False,
         custom_queries_path: Optional[str] = None,
+        custom_queries_prefix: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.corpus = corpus
@@ -42,15 +43,45 @@ class RetrievalDataset(Dataset):
         self.tokenizer = tokenizer
         self.is_train = is_train
         self.for_prediction = for_prediction
+        self.custom_queries_prefix = custom_queries_prefix or ""
 
         if custom_queries_path is not None:
-            self.custom_queries = json.load(open(custom_queries_path))
+            # Load from OpenAI batch API JSONL format
+            self.custom_queries = {}
+            with open(custom_queries_path) as f:
+                for line in f:
+                    entry = json.loads(line)
+                    custom_id = entry["custom_id"]
+                    content = entry["response"]["body"]["choices"][0]["message"]["content"]
+                    self.custom_queries[custom_id] = content
         else:
             self.custom_queries = None
 
-        self.data = list(
-            itertools.chain.from_iterable(self._load_data(path) for path in data_paths)
-        ) if not dummy_set else [None]
+        if dummy_set:
+            # Create a minimal dummy example using the first premise in the corpus
+            first_premise = corpus.all_premises[0]
+            dummy_context = Context(
+                path=first_premise.path,
+                theorem_full_name="dummy_theorem",
+                theorem_pos=first_premise.start,
+                state="dummy ⊢ dummy",
+            )
+            self.data = [{
+                "url": "dummy",
+                "commit": "dummy",
+                "file_path": first_premise.path,
+                "full_name": "dummy_theorem",
+                "start": list(first_premise.start),
+                "tactic_idx": 0,
+                "context": dummy_context,
+                "pos_premise": first_premise,
+                "neg_premises": [first_premise] * num_negatives,
+                "all_pos_premises": [first_premise],
+            }]*2 # at least 2 examples
+        else:
+            self.data = list(
+                itertools.chain.from_iterable(self._load_data(path) for path in data_paths)
+            )
 
     def _load_data(self, data_path: str) -> List[Example]:
         data = []
@@ -155,7 +186,7 @@ class RetrievalDataset(Dataset):
 
         # Tokenize the context.
         if self.custom_queries is not None:
-            context_to_tokenize = [self.custom_queries[ex["context"].get_custom_id(ex["tactic_idx"])] for ex in examples]
+            context_to_tokenize = [self.custom_queries_prefix + self.custom_queries[ex["context"].get_custom_id(ex["tactic_idx"])] for ex in examples]
         else:
             context_to_tokenize = [ex["context"].serialize() for ex in examples]
         tokenized_context = self.tokenizer(
@@ -165,7 +196,7 @@ class RetrievalDataset(Dataset):
             truncation=True,
             return_tensors="pt",
         )
-        batch["context"] = context_to_tokenize
+        batch["context_str"] = context_to_tokenize
         batch["context_ids"] = tokenized_context.input_ids
         batch["context_mask"] = tokenized_context.attention_mask
 
@@ -245,6 +276,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         predict_splits: Optional[List[str]] = None,
         pred_ds: Optional[str] = None,
         custom_queries_path: Optional[str] = None,
+        custom_queries_prefix: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.data_path = data_path
@@ -259,6 +291,7 @@ class RetrievalDataModule(pl.LightningDataModule):
         self.indexed_corpus_path = indexed_corpus_path
         self.predict_splits = predict_splits
         self.custom_queries_path = custom_queries_path
+        self.custom_queries_prefix = custom_queries_prefix
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         if self.indexed_corpus_path is not None:
             with open(self.indexed_corpus_path, "rb") as f:
@@ -279,7 +312,7 @@ class RetrievalDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         
-        # aparrently the lightningCLI always needs a train dataset, even if we are not training
+        # LightningCLI always needs a train dataset, even if we are not training
         self.ds_train = RetrievalDataset(
             [os.path.join(self.data_path, "train.json")],
             self.corpus,
@@ -289,7 +322,7 @@ class RetrievalDataModule(pl.LightningDataModule):
             self.tokenizer,
             is_train=True,
             for_prediction=False,
-            dummy_set=True if stage in ("val", "test", "predict") else False,
+            dummy_set=stage in ("validate", "test", "predict"),
         )
 
         if stage in (None, "fit", "validate"):
@@ -304,7 +337,7 @@ class RetrievalDataModule(pl.LightningDataModule):
                 for_prediction=False,
             )
 
-        if stage in (None, "fit", "predict"):
+        if stage in (None, "predict"):
             data_files = []
             if self.pred_ds is not None:
                 data_files.append(self.pred_ds)
@@ -324,6 +357,7 @@ class RetrievalDataModule(pl.LightningDataModule):
                 is_train=False,
                 for_prediction=True,
                 custom_queries_path=self.custom_queries_path,
+                custom_queries_prefix=self.custom_queries_prefix,
             )
 
     def train_dataloader(self) -> DataLoader:

@@ -56,7 +56,9 @@ class Context:
         return self.state
 
     def get_custom_id(self, tactic_idx: int) -> str:
-        return f"{self.path}|||{self.theorem_full_name}|||{self.theorem_pos}|||{tactic_idx}"
+        # Use list format to match OpenAI batch API custom_id format
+        pos_list = [self.theorem_pos.line_nb, self.theorem_pos.column_nb]
+        return f"{self.path}|||{self.theorem_full_name}|||{pos_list}|||{tactic_idx}"
         
 
 
@@ -430,8 +432,7 @@ class Corpus:
                     scores[j].append(similarities[j, i].item())
                     if len(results[j]) >= k:
                         break
-            else:
-                raise ValueError
+            # No error if fewer than k premises found - just return what we have
 
         return results, scores
 
