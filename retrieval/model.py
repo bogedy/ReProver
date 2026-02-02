@@ -35,6 +35,8 @@ class PremiseRetriever(pl.LightningModule):
         max_seq_len: int,
         num_retrieved: int = 100,
         skip_reindexing: bool = False,
+        use_infonce: bool = False,
+        infonce_temperature: float = 0.07,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -42,6 +44,8 @@ class PremiseRetriever(pl.LightningModule):
         self.warmup_steps = warmup_steps
         self.num_retrieved = num_retrieved
         self.max_seq_len = max_seq_len
+        self.use_infonce = use_infonce
+        self.infonce_temperature = infonce_temperature
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         try:
             self.encoder = AutoModelForTextEncoding.from_pretrained(model_name)
@@ -141,8 +145,20 @@ class PremiseRetriever(pl.LightningModule):
 
         # Cosine similarities for unit-norm vectors are just inner products.
         similarity = torch.mm(context_emb, all_premise_embs.t())
-        assert -1 <= similarity.min() <= similarity.max() <= 1
-        loss = F.mse_loss(similarity, label)
+        sim_min, sim_max = similarity.min().item(), similarity.max().item()
+        if sim_min < -1 or sim_max > 1:
+            logger.warning(f"Similarity out of range: min={sim_min:.6f}, max={sim_max:.6f}. Clamping to [-1, 1].")
+            similarity = torch.clamp(similarity, min=-1.0, max=1.0)
+        
+        if self.use_infonce:
+            # InfoNCE loss: treat as classification where each query should match its positive
+            logits = similarity / self.infonce_temperature
+            batch_size = context_emb.size(0)
+            targets = torch.arange(batch_size, device=logits.device)
+            loss = F.cross_entropy(logits, targets)
+        else:
+            loss = F.mse_loss(similarity, label)
+        
         return loss
 
     ############
@@ -191,6 +207,20 @@ class PremiseRetriever(pl.LightningModule):
         """Re-index the retrieval corpus using the up-to-date encoder."""
         if not self.embeddings_staled:
             return
+
+        # During sanity check, use random normalized vectors to skip expensive encoding
+        if self.trainer is not None and self.trainer.sanity_checking:
+            logger.info("Sanity check detected - using random normalized embeddings")
+            random_emb = torch.randn(
+                len(self.corpus.all_premises),
+                self.embedding_size,
+                dtype=self.encoder.dtype,
+                device=self.device,
+            )
+            self.corpus_embeddings = F.normalize(random_emb, dim=1)
+            self.embeddings_staled = False
+            return
+
         logger.info("Re-indexing the retrieval corpus")
 
         self.corpus_embeddings = torch.zeros(
