@@ -361,26 +361,30 @@ class RetrievalDataModule(pl.LightningDataModule):
             )
 
     def train_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.ds_train,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            collate_fn=self.ds_train.collate,
-            shuffle=True,
-            pin_memory=True,
-            drop_last=True,
-        )
+        dataloader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": self.num_workers,
+            "collate_fn": self.ds_train.collate,
+            "shuffle": True,
+            "pin_memory": True,
+            "drop_last": True,
+        }
+        if self.prefetch_factor is not None and self.num_workers > 0:
+            dataloader_kwargs["prefetch_factor"] = self.prefetch_factor
+        return DataLoader(self.ds_train, **dataloader_kwargs)
 
     def val_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.ds_val,
-            batch_size=self.eval_batch_size,
-            num_workers=self.num_workers,
-            collate_fn=self.ds_val.collate,
-            shuffle=False,
-            pin_memory=True,
-            drop_last=False,
-        )
+        dataloader_kwargs = {
+            "batch_size": self.eval_batch_size,
+            "num_workers": self.num_workers,
+            "collate_fn": self.ds_val.collate,
+            "shuffle": False,
+            "pin_memory": True,
+            "drop_last": False,
+        }
+        if self.prefetch_factor is not None and self.num_workers > 0:
+            dataloader_kwargs["prefetch_factor"] = self.prefetch_factor
+        return DataLoader(self.ds_val, **dataloader_kwargs)
 
     def predict_dataloader(self) -> DataLoader:
         dataloader_kwargs = {
