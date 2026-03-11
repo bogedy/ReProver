@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# Sbatch script for testing prefetch configuration with exp2
-# Uses byt5-small model for faster iteration
+# Sbatch script for profiling training with cProfile + snakeviz
+# Profiles only the trainer.fit() call, excluding setup
 
-#SBATCH -J test_prefetch_exp2                      # Job name
+#SBATCH -J profile_exp2                            # Job name
 #SBATCH --ntasks=1                                 # Number of tasks
 #SBATCH --nodes=1                                  # Single node
 #SBATCH --partition=a100-galvani                   # A100 partition
-#SBATCH --time=0-06:00                             # 6 hours should be plenty for testing
+#SBATCH --time=0-00:10                             # 10 minutes
 #SBATCH --gres=gpu:1                               # 1 GPU
-#SBATCH --output=/mnt/lustre/work/oh/arubinstein17/math_prover_project/ReProver/retrieval/out/test/exp2_train_random-%j.out
-#SBATCH --error=/mnt/lustre/work/oh/arubinstein17/math_prover_project/ReProver/retrieval/out/test/exp2_train_random-%j.err
+#SBATCH --output=/mnt/lustre/work/oh/arubinstein17/math_prover_project/ReProver/out/test/profile_exp2-%j.out
+#SBATCH --error=/mnt/lustre/work/oh/arubinstein17/math_prover_project/ReProver/out/test/profile_exp2-%j.err
 
 # Diagnostic Phase
 echo "========== Job Info =========="
@@ -28,20 +28,16 @@ cd /mnt/lustre/work/oh/arubinstein17/math_prover_project/ReProver
 # Set torch extensions dir to avoid permission issues
 export TORCH_EXTENSIONS_DIR=/tmp/torch_extensions
 
-# Activate conda environment if needed (uncomment and modify as needed)
-# source /path/to/conda/etc/profile.d/conda.sh
-# conda activate your_env
+# ── Profiler Configuration ──
+export PROFILE_STEPS=150       # ~1 minute of training, no validation
+export PROFILE_OUTPUT=out/test/profiles/training_${SLURM_JOB_ID}.prof
 
-# Create output directory for profile
-mkdir -p out/test/profiles
-
-# Compute Phase - Run with cProfile for SnakeViz analysis
-# Profile will be saved to a .prof file that can be viewed with snakeviz
-echo "========== Starting Training with Profiler =========="
-python -m cProfile -o out/test/profiles/exp2_train_random_${SLURM_JOB_ID}.prof \
-    retrieval/main.py fit --config retrieval/confs/test/exp2_train_random.yaml
+# Note: no "fit" subcommand — run=False mode doesn't use subcommands
+echo "========== Starting Training with cProfile =========="
+python -m retrieval.profile_training \
+    --config retrieval/confs/test/exp2_train_random.yaml
 
 echo ""
 echo "========== Training Complete =========="
-echo "Profile saved to: out/test/profiles/exp2_train_random_${SLURM_JOB_ID}.prof"
-echo "View with: snakeviz out/test/profiles/exp2_train_random_${SLURM_JOB_ID}.prof"
+echo "Profile saved to: ${PROFILE_OUTPUT}"
+echo "View with: snakeviz ${PROFILE_OUTPUT}"

@@ -3,6 +3,8 @@ lightning_logs/
 logs/
 out/
 
+*.prof
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -132,3 +134,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+wandb/settings
+results_table.png
+clidiff

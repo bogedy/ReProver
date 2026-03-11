@@ -11,8 +11,8 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.WandbLogger
     init_args:
-      name: exp4_train_random_2gpus
-      save_dir: out/exp4/train_random_2gpus
+      name: exp4_train_random_2gpus_original
+      save_dir: out/exp4/train_random_2gpus_original
   gradient_clip_val: 1.0
   max_steps: 800000
   callbacks:
@@ -40,13 +40,15 @@ model:
   num_retrieved: 100
   use_infonce: true
   infonce_temperature: 0.07
+  gradient_checkpointing: false
+  fused_forward: false
 
 data:
   data_path: data/leandojo_benchmark_4.19/random/
   corpus_path: data/leandojo_benchmark_4.19/corpus.jsonl
   num_negatives: 3
   num_in_file_negatives: 1
-  batch_size: 6
+  batch_size: 4
   eval_batch_size: 64
   max_seq_len: 1024
   num_workers: 4
