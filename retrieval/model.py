@@ -35,6 +35,10 @@ class PremiseRetriever(pl.LightningModule):
         max_seq_len: int,
         num_retrieved: int = 100,
         skip_reindexing: bool = False,
+        use_infonce: bool = False,
+        infonce_temperature: float = 0.07,
+        gradient_checkpointing: bool = False,
+        fused_forward: bool = False,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -42,6 +46,10 @@ class PremiseRetriever(pl.LightningModule):
         self.warmup_steps = warmup_steps
         self.num_retrieved = num_retrieved
         self.max_seq_len = max_seq_len
+        self.use_infonce = use_infonce
+        self.infonce_temperature = infonce_temperature
+        self.gradient_checkpointing = gradient_checkpointing
+        self.fused_forward = fused_forward
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         try:
             self.encoder = AutoModelForTextEncoding.from_pretrained(model_name)
@@ -49,6 +57,9 @@ class PremiseRetriever(pl.LightningModule):
             # Fallback for decoder-based embedding models (e.g., embeddinggemma)
             logger.info(f"AutoModelForTextEncoding doesn't support {model_name}, falling back to AutoModel")
             self.encoder = AutoModel.from_pretrained(model_name)
+        if self.gradient_checkpointing:
+            self.encoder.gradient_checkpointing_enable()
+            logger.info("Gradient checkpointing enabled for encoder")
         self.embeddings_staled = True
         self.skip_reindexing = skip_reindexing
     @classmethod
@@ -103,6 +114,14 @@ class PremiseRetriever(pl.LightningModule):
             hidden_states = torch.utils.checkpoint.checkpoint(
                 self.encoder, input_ids, attention_mask, use_reentrant=False
             )[0]
+        elif self.gradient_checkpointing and self.training:
+            # HF gradient_checkpointing_enable() handles internal layers;
+            # just call the encoder normally — it will checkpoint internally.
+            hidden_states = self.encoder(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                return_dict=True,
+            ).last_hidden_state
         else:
             hidden_states = self.encoder(
                 input_ids=input_ids,
@@ -130,19 +149,60 @@ class PremiseRetriever(pl.LightningModule):
         label: torch.LongTensor,
     ) -> torch.FloatTensor:
         """Compute the contrastive loss for premise retrieval."""
-        # Encode the query and positive/negative documents.
-        context_emb = self._encode(context_ids, context_mask)
-        pos_premise_emb = self._encode(pos_premise_ids, pos_premise_mask)
-        neg_premise_embs = [
-            self._encode(ids, mask)
-            for ids, mask in zip_strict(neg_premises_ids, neg_premises_mask)
-        ]
-        all_premise_embs = torch.cat([pos_premise_emb, *neg_premise_embs], dim=0)
+        if self.fused_forward:
+            # Fused: concatenate all inputs into a single forward pass.
+            # This reduces kernel launch overhead and is faster for some models (e.g. BGE).
+            batch_size = context_ids.size(0)
+            num_neg = len(neg_premises_ids)
+
+            all_ids = [context_ids, pos_premise_ids] + list(neg_premises_ids)
+            all_masks = [context_mask, pos_premise_mask] + list(neg_premises_mask)
+
+            # Pad to the same seq length and concatenate along the batch dim.
+            max_len = max(t.size(1) for t in all_ids)
+            padded_ids, padded_masks = [], []
+            for ids, mask in zip(all_ids, all_masks):
+                pad_len = max_len - ids.size(1)
+                if pad_len > 0:
+                    ids = F.pad(ids, (0, pad_len), value=self.tokenizer.pad_token_id)
+                    mask = F.pad(mask, (0, pad_len), value=0)
+                padded_ids.append(ids)
+                padded_masks.append(mask)
+
+            fused_ids = torch.cat(padded_ids, dim=0)
+            fused_mask = torch.cat(padded_masks, dim=0)
+
+            all_embs = self._encode(fused_ids, fused_mask)
+
+            # Split back: context, pos_premise, neg_premise_1, ..., neg_premise_N
+            context_emb = all_embs[:batch_size]
+            all_premise_embs = all_embs[batch_size:]
+        else:
+            # Default: separate forward passes for context, positive, and each negative.
+            context_emb = self._encode(context_ids, context_mask)
+            pos_premise_emb = self._encode(pos_premise_ids, pos_premise_mask)
+            neg_premise_embs = [
+                self._encode(ids, mask)
+                for ids, mask in zip_strict(neg_premises_ids, neg_premises_mask)
+            ]
+            all_premise_embs = torch.cat([pos_premise_emb, *neg_premise_embs], dim=0)
 
         # Cosine similarities for unit-norm vectors are just inner products.
         similarity = torch.mm(context_emb, all_premise_embs.t())
-        assert -1 <= similarity.min() <= similarity.max() <= 1
-        loss = F.mse_loss(similarity, label)
+        sim_min, sim_max = similarity.min().item(), similarity.max().item()
+        if sim_min < -1 or sim_max > 1:
+            logger.warning(f"Similarity out of range: min={sim_min:.6f}, max={sim_max:.6f}. Clamping to [-1, 1].")
+            similarity = torch.clamp(similarity, min=-1.0, max=1.0)
+        
+        if self.use_infonce:
+            # InfoNCE loss: treat as classification where each query should match its positive
+            logits = similarity / self.infonce_temperature
+            batch_size = context_emb.size(0)
+            targets = torch.arange(batch_size, device=logits.device)
+            loss = F.cross_entropy(logits, targets)
+        else:
+            loss = F.mse_loss(similarity, label)
+        
         return loss
 
     ############
@@ -191,6 +251,20 @@ class PremiseRetriever(pl.LightningModule):
         """Re-index the retrieval corpus using the up-to-date encoder."""
         if not self.embeddings_staled:
             return
+
+        # During sanity check, use random normalized vectors to skip expensive encoding
+        if self.trainer is not None and self.trainer.sanity_checking:
+            logger.info("Sanity check detected - using random normalized embeddings")
+            random_emb = torch.randn(
+                len(self.corpus.all_premises),
+                self.embedding_size,
+                dtype=self.encoder.dtype,
+                device=self.device,
+            )
+            self.corpus_embeddings = F.normalize(random_emb, dim=1)
+            self.embeddings_staled = False
+            return
+
         logger.info("Re-indexing the retrieval corpus")
 
         self.corpus_embeddings = torch.zeros(

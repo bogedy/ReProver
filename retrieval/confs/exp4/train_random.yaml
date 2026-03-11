@@ -1,0 +1,54 @@
+seed_everything: 3407  # https://arxiv.org/abs/2109.08203
+trainer:
+  accelerator: gpu
+  devices: 1
+  precision: bf16-mixed
+  strategy:
+    class_path: pytorch_lightning.strategies.DeepSpeedStrategy
+    init_args:
+      stage: 2
+      offload_optimizer: false
+      cpu_checkpointing: false
+  logger:
+    class_path: pytorch_lightning.loggers.WandbLogger
+    init_args:
+      name: exp4_train_random
+      save_dir: out/exp4/train_random
+  gradient_clip_val: 1.0
+  max_steps: 800000
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.LearningRateMonitor
+      init_args: 
+        logging_interval: step
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args:
+        verbose: true
+        save_top_k: 1
+        save_last: true
+        monitor: Recall@10_val
+        mode: max
+    - class_path: pytorch_lightning.callbacks.EarlyStopping
+      init_args:
+        monitor: Recall@10_val
+        patience: 5
+        mode: max
+        verbose: true
+
+model:
+  model_name: BAAI/bge-m3
+  lr: 1e-5
+  warmup_steps: 2000
+  num_retrieved: 100
+  use_infonce: true
+  infonce_temperature: 0.07
+  fused_forward: true
+
+data:
+  data_path: data/leandojo_benchmark_4.19/random/
+  corpus_path: data/leandojo_benchmark_4.19/corpus.jsonl
+  num_negatives: 3
+  num_in_file_negatives: 1
+  batch_size: 4
+  eval_batch_size: 64
+  max_seq_len: 1024
+  num_workers: 4
