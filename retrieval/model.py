@@ -9,8 +9,9 @@ from lean_dojo import Pos
 from loguru import logger
 import pytorch_lightning as pl
 import torch.nn.functional as F
-from typing import List, Dict, Any, Tuple, Union
+from typing import List, Dict, Any, Tuple, Union, Optional
 from transformers import AutoModel, AutoModelForTextEncoding, AutoTokenizer
+from peft import LoraConfig, get_peft_model, TaskType
 
 from common import (
     Premise,
@@ -39,6 +40,11 @@ class PremiseRetriever(pl.LightningModule):
         infonce_temperature: float = 0.07,
         gradient_checkpointing: bool = False,
         fused_forward: bool = False,
+        use_lora: bool = False,
+        lora_r: int = 16,
+        lora_alpha: int = 32,
+        lora_dropout: float = 0.05,
+        lora_target_modules: Optional[List[str]] = None,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -50,6 +56,7 @@ class PremiseRetriever(pl.LightningModule):
         self.infonce_temperature = infonce_temperature
         self.gradient_checkpointing = gradient_checkpointing
         self.fused_forward = fused_forward
+        self.use_lora = use_lora
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         try:
             self.encoder = AutoModelForTextEncoding.from_pretrained(model_name)
@@ -60,6 +67,19 @@ class PremiseRetriever(pl.LightningModule):
         if self.gradient_checkpointing:
             self.encoder.gradient_checkpointing_enable()
             logger.info("Gradient checkpointing enabled for encoder")
+        # Wrap encoder with LoRA if requested
+        if self.use_lora:
+            target_modules = lora_target_modules or ["query", "value"]
+            lora_config = LoraConfig(
+                r=lora_r,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+                target_modules=target_modules,
+                bias="none",
+            )
+            self.encoder = get_peft_model(self.encoder, lora_config)
+            logger.info(f"LoRA enabled: r={lora_r}, alpha={lora_alpha}, target_modules={target_modules}")
+            self.encoder.print_trainable_parameters()
         self.embeddings_staled = True
         self.skip_reindexing = skip_reindexing
     @classmethod
@@ -150,18 +170,18 @@ class PremiseRetriever(pl.LightningModule):
     ) -> torch.FloatTensor:
         """Compute the contrastive loss for premise retrieval."""
         if self.fused_forward:
-            # Fused: concatenate all inputs into a single forward pass.
-            # This reduces kernel launch overhead and is faster for some models (e.g. BGE).
-            batch_size = context_ids.size(0)
-            num_neg = len(neg_premises_ids)
+            # Fused: two forward passes — one for context, one for all premises.
+            # This avoids padding between context and premises (which often have
+            # very different lengths) while still batching all premises together.
+            context_emb = self._encode(context_ids, context_mask)
 
-            all_ids = [context_ids, pos_premise_ids] + list(neg_premises_ids)
-            all_masks = [context_mask, pos_premise_mask] + list(neg_premises_mask)
+            premise_ids_list = [pos_premise_ids] + list(neg_premises_ids)
+            premise_masks_list = [pos_premise_mask] + list(neg_premises_mask)
 
-            # Pad to the same seq length and concatenate along the batch dim.
-            max_len = max(t.size(1) for t in all_ids)
+            # Pad premises to the same seq length and concatenate along batch dim.
+            max_len = max(t.size(1) for t in premise_ids_list)
             padded_ids, padded_masks = [], []
-            for ids, mask in zip(all_ids, all_masks):
+            for ids, mask in zip(premise_ids_list, premise_masks_list):
                 pad_len = max_len - ids.size(1)
                 if pad_len > 0:
                     ids = F.pad(ids, (0, pad_len), value=self.tokenizer.pad_token_id)
@@ -172,11 +192,7 @@ class PremiseRetriever(pl.LightningModule):
             fused_ids = torch.cat(padded_ids, dim=0)
             fused_mask = torch.cat(padded_masks, dim=0)
 
-            all_embs = self._encode(fused_ids, fused_mask)
-
-            # Split back: context, pos_premise, neg_premise_1, ..., neg_premise_N
-            context_emb = all_embs[:batch_size]
-            all_premise_embs = all_embs[batch_size:]
+            all_premise_embs = self._encode(fused_ids, fused_mask)
         else:
             # Default: separate forward passes for context, positive, and each negative.
             context_emb = self._encode(context_ids, context_mask)
@@ -214,6 +230,11 @@ class PremiseRetriever(pl.LightningModule):
             self.logger.log_hyperparams(self.hparams)
             logger.info(f"Logging to {self.trainer.log_dir}")
 
+        # Log trainable parameter count
+        trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        total = sum(p.numel() for p in self.parameters())
+        logger.info(f"Trainable params: {trainable:,} / {total:,} ({100 * trainable / total:.2f}%)")
+
         self.corpus = self.trainer.datamodule.corpus
         self.corpus_embeddings = None
         self.embeddings_staled = True
@@ -238,8 +259,12 @@ class PremiseRetriever(pl.LightningModule):
         self.embeddings_staled = True
 
     def configure_optimizers(self) -> Dict[str, Any]:
+        if self.use_lora:
+            params = [p for p in self.parameters() if p.requires_grad]
+        else:
+            params = self.parameters()
         return get_optimizers(
-            self.parameters(), self.trainer, self.lr, self.warmup_steps
+            params, self.trainer, self.lr, self.warmup_steps
         )
 
     ##############

@@ -1,0 +1,56 @@
+seed_everything: 3407  # https://arxiv.org/abs/2109.08203
+trainer:
+  accelerator: gpu
+  devices: 1
+  precision: bf16-mixed
+  logger:
+    class_path: pytorch_lightning.loggers.WandbLogger
+    init_args:
+      name: exp4_train_random_lora
+      save_dir: out/exp4/train_random_lora
+  gradient_clip_val: 1.0
+  max_steps: 800000
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.LearningRateMonitor
+      init_args: 
+        logging_interval: step
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args:
+        verbose: true
+        save_top_k: 1
+        save_last: true
+        monitor: Recall@10_val
+        mode: max
+    - class_path: pytorch_lightning.callbacks.EarlyStopping
+      init_args:
+        monitor: Recall@10_val
+        patience: 5
+        mode: max
+        verbose: true
+
+model:
+  model_name: BAAI/bge-m3
+  lr: 1e-4
+  warmup_steps: 2000
+  num_retrieved: 100
+  use_infonce: true
+  infonce_temperature: 0.07
+  gradient_checkpointing: false
+  fused_forward: true
+  use_lora: true
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  lora_target_modules:
+    - query
+    - value
+
+data:
+  data_path: data/leandojo_benchmark_4.19/random/
+  corpus_path: data/leandojo_benchmark_4.19/corpus.jsonl
+  num_negatives: 3
+  num_in_file_negatives: 1
+  batch_size: 4  # TODO: increase after observing VRAM usage
+  eval_batch_size: 64
+  max_seq_len: 1024
+  num_workers: 4
